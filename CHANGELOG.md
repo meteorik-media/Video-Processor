@@ -8,6 +8,7 @@ All notable changes to this project are documented here.
 
 - Local web interface (`serve`): folder browser, presets, live progress, results table, English/Spanish.
   Standard library only, bound to `127.0.0.1`, guarded by a per-session token and host check
+- Save and delete your own named presets from the interface (stored in `presets.user.json`)
 - `Video Processor.bat` and `start.sh` launchers
 - Commands `run` (single pass, ideal for a schedule), `watch`, `doctor` and `presets`
 - Presets `ai-log` (360p, 2 fps, no audio, CRF 34), `ai-log-480` and `human-proxy`; custom presets

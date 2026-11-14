@@ -8,6 +8,7 @@ Todos los cambios importantes del proyecto quedan documentados acá.
 
 - Interfaz web local (`serve`): explorador de carpetas, presets, progreso en vivo, tabla de resultados, español/inglés.
   Solo biblioteca estándar, en `127.0.0.1`, protegida con token por sesión y comprobación de host
+- Guardar y borrar presets propios con nombre desde la interfaz (se guardan en `presets.user.json`)
 - Lanzadores `Video Processor.bat` y `start.sh`
 - Comandos `run` (una pasada, ideal para schedule), `watch`, `doctor` y `presets`
 - Presets `ai-log` (360p, 2 fps, sin audio, CRF 34), `ai-log-480` y `human-proxy`; presets propios

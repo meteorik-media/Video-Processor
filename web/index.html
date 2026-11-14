@@ -117,6 +117,12 @@ td.bad{color:var(--bad);} td.ok{color:var(--ok);}
     <h2 data-i="preset">Preset</h2>
     <div class="field"><select id="preset"></select></div>
     <p class="hint" id="presetDesc"></p>
+    <div class="field" style="margin-top:12px"><label data-i="saveAs">Guardar como preset propio</label>
+      <div class="add-row"><input type="text" id="pName" data-ph="pNamePh"><button class="btn" id="pSave" data-i="save">Guardar</button></div>
+      <input type="text" id="pDesc" data-ph="pDescPh" style="margin-top:6px">
+    </div>
+    <button class="btn" id="pDel" style="display:none;width:100%" data-i="del">Borrar este preset</button>
+    <p class="hint" data-i="presetHint">Guarda el preset elegido con los ajustes de abajo aplicados. Se escribe en presets.user.json y también sirve por línea de comandos.</p>
   </div>
 
   <div class="section collapsed" id="sec-over">
@@ -217,7 +223,10 @@ const T = {
     addFolder:"Añadir esta carpeta",noVideos:"Sin vídeos ni subcarpetas aquí",doctorOk:"ffmpeg listo",doctorBad:"Falta algo en ffmpeg",
     noRes:"Todavía no hay resultados en esta carpeta de salida.",colId:"Archivo",colState:"Estado",colDur:"Duración",colSize:"Peso",colParts:"Salida",colScenes:"Escenas",
     files:"archivos",ok:"ok",failedN:"con error",reduced:"reducido",
-    needSrcOut:"Falta el origen o la salida",missing:"No se encontró"},
+    needSrcOut:"Falta el origen o la salida",missing:"No se encontró",
+    saveAs:"Guardar como preset propio",pNamePh:"nombre (ej. gameplay-rapido)",pDescPh:"descripción (opcional)",save:"Guardar",del:"Borrar este preset",
+    presetHint:"Guarda el preset elegido con los ajustes de abajo aplicados. Se escribe en presets.user.json y también sirve por línea de comandos.",
+    saved:"Preset guardado",deleted:"Preset borrado",confirmDel:"¿Borrar el preset",mine:"(propio)"},
   en:{src:"Source",add:"Add",browse:"Browse files and folders…",browseShort:"Browse…",pathPh:"Paste a file or folder path",
     srcHint:"Single files or folders (subfolders included). Originals are never touched.",
     out:"Output",outPh:"Output folder",outHint:"Created if missing. If a manifest.json is already there, what's processed gets skipped.",
@@ -234,7 +243,10 @@ const T = {
     addFolder:"Add this folder",noVideos:"No videos or subfolders here",doctorOk:"ffmpeg ready",doctorBad:"ffmpeg is missing something",
     noRes:"No results in this output folder yet.",colId:"File",colState:"Status",colDur:"Duration",colSize:"Size",colParts:"Output",colScenes:"Scenes",
     files:"files",ok:"ok",failedN:"failed",reduced:"smaller",
-    needSrcOut:"Source or output is missing",missing:"Not found"}
+    needSrcOut:"Source or output is missing",missing:"Not found",
+    saveAs:"Save as your own preset",pNamePh:"name (e.g. fast-gameplay)",pDescPh:"description (optional)",save:"Save",del:"Delete this preset",
+    presetHint:"Saves the chosen preset with the settings below applied. It is written to presets.user.json and also works from the command line.",
+    saved:"Preset saved",deleted:"Preset deleted",confirmDel:"Delete preset",mine:"(yours)"}
 };
 const $ = id => document.getElementById(id);
 const store = { get(k){ try{return localStorage.getItem(k);}catch(e){return null;} }, set(k,v){ try{localStorage.setItem(k,v);}catch(e){} } };
@@ -260,7 +272,7 @@ function applyLang(){
   document.querySelectorAll("[data-i]").forEach(el => { el.textContent = t(el.dataset.i); });
   document.querySelectorAll("[data-ph]").forEach(el => { el.placeholder = t(el.dataset.ph); });
   $("langBtn").textContent = lang === "es" ? "EN" : "ES";
-  buildTri("audio"); buildTri("timecode"); renderPresetDesc(); renderDoctor(); renderState(lastState); updateRunBtn();
+  buildTri("audio"); buildTri("timecode"); if (S.user_presets) fillPresets(); renderPresetDesc(); renderDoctor(); renderState(lastState); updateRunBtn();
   if ($("tab-res").style.display !== "none") loadResults();
 }
 function buildTri(key){
@@ -276,7 +288,14 @@ function renderDoctor(){
   el.textContent = (d.ok ? "✓ " : "✗ ") + (d.ok ? t("doctorOk") : t("doctorBad"));
   el.title = ["ffmpeg","ffprobe","libx264","aac","drawtext","scene"].map(k => (d[k]?"✓ ":"✗ ")+k).join("\n") + "\nfont: " + (d.font||"—");
 }
+function fillPresets(selected){
+  const sel = $("preset"), keep = selected || sel.value || "ai-log"; sel.innerHTML = "";
+  Object.keys(S.presets).sort().forEach(n => { const o=document.createElement("option"); o.value=n;
+    o.textContent = n + (S.user_presets.includes(n) ? " " + t("mine") : ""); sel.appendChild(o); });
+  sel.value = S.presets[keep] ? keep : "ai-log";
+}
 function renderPresetDesc(){
+  $("pDel").style.display = S.user_presets && S.user_presets.includes($("preset").value) ? "" : "none";
   const p = S.presets[$("preset").value]; if (!p) { $("presetDesc").textContent=""; return; }
   $("presetDesc").textContent = (lang==="en" && p.description_en) || p.description || "";
 }
@@ -435,6 +454,20 @@ $("outText").oninput = () => { updateRunBtn(); persist(); };
 $("preset").onchange = () => { renderPresetDesc(); persist(); };
 ["height","fps","crf","settle","font","chunk","scenes","interval"].forEach(k => $(k).onchange = persist);
 $("runBtn").onclick = () => lastState==="running" ? api("/api/cancel", {}).then(poll).catch(e=>toast(e.message)) : start("run");
+async function refreshPresets(selected){ S = await api("/api/state"); fillPresets(selected); renderPresetDesc(); persist(); }
+$("pSave").onclick = async () => {
+  const num = id => $(id).value.trim()==="" ? null : $(id).value.trim();
+  try{
+    const r = await api("/api/preset/save", { name:$("pName").value.trim(), base:$("preset").value, description:$("pDesc").value.trim(),
+      height:num("height"), fps:num("fps"), crf:num("crf"), audio:tri.audio, timecode:tri.timecode });
+    ["height","fps","crf"].forEach(k => $(k).value=""); tri.audio=null; tri.timecode=null; buildTri("audio"); buildTri("timecode");
+    $("pName").value=""; $("pDesc").value=""; await refreshPresets(r.name); toast(t("saved")+": "+r.name);
+  }catch(e){ toast(e.message); }
+};
+$("pDel").onclick = async () => {
+  const n = $("preset").value; if (!confirm(`${t("confirmDel")} "${n}"?`)) return;
+  try{ await api("/api/preset/delete", { name:n }); await refreshPresets("ai-log"); toast(t("deleted")+": "+n); }catch(e){ toast(e.message); }
+};
 $("dryBtn").onclick = () => start("dry");
 $("watchBtn").onclick = () => start("watch");
 $("openOut").onclick = () => api("/api/open", { path:$("outText").value.trim() }).catch(e=>toast(e.message));
@@ -443,8 +476,7 @@ $("refreshRes").onclick = loadResults;
 (async function init(){
   try{
     S = await api("/api/state");
-    const sel = $("preset"); Object.keys(S.presets).sort().forEach(n => { const o=document.createElement("option"); o.value=n; o.textContent=n; sel.appendChild(o); });
-    sel.value = "ai-log"; restore(); renderSources();
+    fillPresets("ai-log"); restore(); renderSources();
     applyLang(); poll();
   }catch(e){ toast(e.message); }
 })();

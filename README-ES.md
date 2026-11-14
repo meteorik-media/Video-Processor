@@ -6,12 +6,12 @@ Comprime vídeo raw a proxies ligeros para que una IA (o una persona) pueda mira
 
 ## 🧰 Qué hace
 
-- **Interfaz web local** (`python video_processor.py serve`): eliges carpetas con un explorador integrado, un preset, ajustas lo que quieras, ves el progreso en vivo y la tabla de resultados. Corre solo en tu equipo (`127.0.0.1`), está en español e inglés y hace exactamente lo mismo que la línea de comandos.
+- **Interfaz web local** (`python video_processor.py serve`): eliges carpetas con un explorador integrado, un preset, ajustas lo que quieras, ves el progreso en vivo guardas presets propios con nombre y ves la tabla de resultados. Corre solo en tu equipo (`127.0.0.1`), está en español e inglés y hace exactamente lo mismo que la línea de comandos.
 - **Presets con nombre**
   - `ai-log`: 360p, 2 fps, sin audio, CRF 34. Pesa un 99% menos y sigue siendo legible para una IA.
   - `ai-log-480`: igual pero a 480p, por si hay texto pequeño en pantalla.
   - `human-proxy`: 540p, hasta 30 fps, con audio, para editar o revisar.
-  - Añade los tuyos en `presets.user.json` (hay un ejemplo en `presets.user.example.json`) o con `--preset-file`. Cualquier valor se puede pisar por línea de comandos: `--height`, `--fps`, `--crf`, `--audio/--no-audio`.
+  - Guarda los tuyos desde la interfaz (van a `presets.user.json`), edita ese archivo a mano (hay un ejemplo en `presets.user.example.json`) o usa `--preset-file`. Cualquier valor se puede pisar por línea de comandos: `--height`, `--fps`, `--crf`, `--audio/--no-audio`.
 - **Reloj quemado** con el tiempo del vídeo ORIGINAL (`hh:mm:ss.mmm`, esquina superior izquierda). Así la IA lee el minuto en pantalla en vez de fiarse del reproductor, y sigue siendo correcto aunque el vídeo vaya troceado.
 - **Troceado** (`--chunk 30m`) para vídeos largos: cada trozo conserva el tiempo del original, y el `manifest.json` guarda el inicio y el final de cada uno.
 - **Cambios de escena** (`--scenes 0.3`) como candidatos a revisar, en `markers.csv`. Se detectan sobre los proxies ya reducidos (rápido) y tratando los trozos como un solo flujo, así que no se pierden los cambios justo en el corte.

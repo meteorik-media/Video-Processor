@@ -6,12 +6,12 @@ Compresses raw video into lightweight proxies so an AI (or a person) can watch i
 
 ## 🧰 What it does
 
-- **Local web interface** (`python video_processor.py serve`): pick folders with a built-in browser, choose a preset, tweak settings, watch live progress, and see the results table. It runs only on your machine (`127.0.0.1`), works in English and Spanish, and does exactly what the command line does.
+- **Local web interface** (`python video_processor.py serve`): pick folders with a built-in browser, choose a preset, tweak settings, watch live progress, save your own presets with a name, and see the results table. It runs only on your machine (`127.0.0.1`), works in English and Spanish, and does exactly what the command line does.
 - **Named presets**
   - `ai-log`: 360p, 2 fps, no audio, CRF 34. About 99% smaller and still readable for an AI.
   - `ai-log-480`: same at 480p, in case there is small on-screen text.
   - `human-proxy`: 540p, up to 30 fps, with audio, for editing or reviewing.
-  - Add your own in `presets.user.json` (see `presets.user.example.json`) or with `--preset-file`. Any value can be overridden from the command line: `--height`, `--fps`, `--crf`, `--audio/--no-audio`.
+  - Save your own from the interface (they go to `presets.user.json`), or edit `presets.user.json` by hand (see `presets.user.example.json`) or with `--preset-file`. Any value can be overridden from the command line: `--height`, `--fps`, `--crf`, `--audio/--no-audio`.
 - **Burned-in clock** showing the ORIGINAL video's time (`hh:mm:ss.mmm`, top-left). The AI reads the minute off the screen instead of trusting the player, and it stays correct even when the video is split into parts.
 - **Chunking** (`--chunk 30m`) for long videos: every part keeps the original's time, and `manifest.json` stores each part's start and end.
 - **Scene changes** (`--scenes 0.3`) as candidates to review, in `markers.csv`. They are detected on the already-reduced proxies (fast) and treating the parts as one continuous stream, so changes right at a cut between parts aren't lost.

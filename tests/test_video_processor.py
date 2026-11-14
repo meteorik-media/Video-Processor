@@ -182,7 +182,10 @@ class WebTests(unittest.TestCase):
             with urllib.request.urlopen(req) as r:
                 return r.status, json.loads(r.read())
         except urllib.error.HTTPError as err:
-            return err.code, json.loads(err.read())
+            try:
+                return err.code, json.loads(err.read())
+            finally:
+                err.close()
 
     def test_rejects_wrong_token_and_foreign_host(self):
         self.assertEqual(self.call("/api/state", token="nope")[0], 403)
@@ -190,6 +193,27 @@ class WebTests(unittest.TestCase):
         code, data = self.call("/api/state")
         self.assertEqual(code, 200)
         self.assertIn("ai-log", data["presets"])
+
+    def test_save_and_delete_user_presets(self):
+        d = Path(tempfile.mkdtemp(prefix="vp-presets-"))
+        self.addCleanup(shutil.rmtree, d, True)
+        original = vp.user_presets_path
+        vp.user_presets_path = lambda: d / "presets.user.json"
+        self.addCleanup(setattr, vp, "user_presets_path", original)
+        code, data = self.call("/api/preset/save", {"name": "rapido", "base": "ai-log", "fps": "5",
+                                                    "description": "mi preset", "audio": True})
+        self.assertEqual((code, data["name"]), (200, "rapido"))
+        saved = json.loads((d / "presets.user.json").read_text(encoding="utf-8"))["rapido"]
+        self.assertEqual((saved["height"], saved["fps"], saved["crf"], saved["audio"]), (360, 5.0, 34, True))
+        _, state = self.call("/api/state")
+        self.assertIn("rapido", state["presets"])
+        self.assertEqual(state["user_presets"], ["rapido"])
+        # nombres peligrosos y borrar presets integrados se rechazan
+        self.assertEqual(self.call("/api/preset/save", {"name": "../x", "base": "ai-log"})[0], 400)
+        self.assertEqual(self.call("/api/preset/save", {"name": "a.b", "base": "ai-log"})[0], 400)
+        self.assertEqual(self.call("/api/preset/delete", {"name": "ai-log"})[0], 400)
+        self.assertEqual(self.call("/api/preset/delete", {"name": "rapido"})[0], 200)
+        self.assertEqual(self.call("/api/state")[1]["user_presets"], [])
 
     def test_browse_lists_folders_and_videos(self):
         d = Path(tempfile.mkdtemp(prefix="vp-browse-"))

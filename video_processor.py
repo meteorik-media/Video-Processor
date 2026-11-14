@@ -169,7 +169,7 @@ def has_filter(name):
 
 def load_presets(extra_file=None):
     presets = {k: dict(v) for k, v in BUILTIN_PRESETS.items()}
-    candidates = [Path(__file__).with_name(USER_PRESETS_NAME)]
+    candidates = [user_presets_path()]
     if extra_file:
         candidates.append(Path(extra_file))
     for path in candidates:
@@ -756,6 +756,62 @@ def read_results(out):
             "dir": str(d.resolve())}
 
 
+PRESET_NAME_RE = re.compile(r"[A-Za-z0-9_-]{1,40}")
+PRESET_KEYS = ("height", "fps", "crf", "audio", "timecode", "x264_preset", "audio_bitrate")
+
+
+def user_presets_path():
+    return Path(__file__).with_name(USER_PRESETS_NAME)
+
+
+def read_user_presets():
+    path = user_presets_path()
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as err:
+        raise ValueError(f"no se pudo leer {path.name}: {err}")
+    if not isinstance(data, dict):
+        raise ValueError(f"{path.name} debe ser un objeto JSON")
+    return data
+
+
+def save_user_preset(body):
+    """Guarda un preset propio en presets.user.json: parte del preset base elegido y aplica el formulario."""
+    name = str(body.get("name") or "").strip()
+    if not PRESET_NAME_RE.fullmatch(name):
+        raise ValueError("el nombre solo puede llevar letras, números, - y _ (máx. 40)")
+    base = load_presets(None).get(str(body.get("base") or "ai-log"))
+    if base is None:
+        raise ValueError("preset base desconocido")
+    cfg = {k: base[k] for k in PRESET_KEYS if k in base}
+    for key, kind in (("height", int), ("fps", float), ("crf", int)):
+        v = body.get(key)
+        if v not in (None, ""):
+            cfg[key] = kind(float(v))
+    for key in ("audio", "timecode"):
+        if isinstance(body.get(key), bool):
+            cfg[key] = body[key]
+    if cfg.get("audio") is True:
+        cfg.setdefault("audio_bitrate", "96k")
+    desc = str(body.get("description") or "").strip()
+    if desc:
+        cfg["description"] = desc[:200]
+    data = read_user_presets()
+    data[name] = cfg
+    atomic_write_text(user_presets_path(), json.dumps(data, indent=2, ensure_ascii=False))
+    return name
+
+
+def delete_user_preset(name):
+    data = read_user_presets()
+    if name not in data:
+        raise ValueError("ese preset no es uno de los tuyos (los integrados no se borran)")
+    del data[name]
+    atomic_write_text(user_presets_path(), json.dumps(data, indent=2, ensure_ascii=False))
+
+
 def build_cli_args(body):
     """Del formulario de la web a los argumentos de `run`/`watch` (nada pasa por una shell)."""
     mode = {"run": "run", "dry": "run", "watch": "watch"}.get(body.get("mode"))
@@ -852,6 +908,7 @@ def make_handler(job, presets_file, token, port):
                 if url.path == "/api/state":
                     self.send_json({"version": __version__, "doctor": doctor_info(),
                                     "presets": load_presets(presets_file), "roots": list_roots(),
+                                    "user_presets": sorted(read_user_presets()),
                                     "script": SCRIPT.name})
                 elif url.path == "/api/browse":
                     self.send_json(browse_dir(q.get("path")))
@@ -876,6 +933,11 @@ def make_handler(job, presets_file, token, port):
                     if presets_file:
                         argv += ["--preset-file", str(presets_file)]
                     job.start(body.get("mode"), argv, output)
+                    self.send_json({"ok": True})
+                elif path == "/api/preset/save":
+                    self.send_json({"ok": True, "name": save_user_preset(body)})
+                elif path == "/api/preset/delete":
+                    delete_user_preset(str(body.get("name") or ""))
                     self.send_json({"ok": True})
                 elif path == "/api/cancel":
                     self.send_json({"ok": job.cancel()})
