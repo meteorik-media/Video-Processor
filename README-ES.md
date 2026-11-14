@@ -10,6 +10,7 @@ Comprime vídeo raw a proxies ligeros para que una IA (o una persona) pueda mira
 - **Presets con nombre**
   - `ai-log`: 360p, 2 fps, sin audio, CRF 34. Pesa un 99% menos y sigue siendo legible para una IA.
   - `ai-log-480`: igual pero a 480p, por si hay texto pequeño en pantalla.
+  - `ai-log-fine` / `ai-log-480-fine`: los mismos dos a 5 fps, para acción muy rápida.
   - `human-proxy`: 540p, hasta 30 fps, con audio, para editar o revisar.
   - Guarda los tuyos desde la interfaz (van a `presets.user.json`), edita ese archivo a mano (hay un ejemplo en `presets.user.example.json`) o usa `--preset-file`. Cualquier valor se puede pisar por línea de comandos: `--height`, `--fps`, `--crf`, `--audio/--no-audio`.
 - **Reloj quemado** con el tiempo del vídeo ORIGINAL (`hh:mm:ss.mmm`, esquina superior izquierda). Así la IA lee el minuto en pantalla en vez de fiarse del reproductor, y sigue siendo correcto aunque el vídeo vaya troceado.

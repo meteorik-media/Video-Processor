@@ -55,6 +55,18 @@ BUILTIN_PRESETS = {
         "height": 480, "fps": 2, "crf": 34, "audio": False, "timecode": True,
         "x264_preset": "veryfast",
     },
+    "ai-log-fine": {
+        "description": "Como ai-log pero a 5 fps, para acción muy rápida o combates cortos.",
+        "description_en": "Like ai-log but at 5 fps, for very fast action or short fights.",
+        "height": 360, "fps": 5, "crf": 34, "audio": False, "timecode": True,
+        "x264_preset": "veryfast",
+    },
+    "ai-log-480-fine": {
+        "description": "480p a 5 fps: texto pequeño en pantalla y acción rápida (el más pesado de los ai-log).",
+        "description_en": "480p at 5 fps: small on-screen text and fast action (the heaviest ai-log).",
+        "height": 480, "fps": 5, "crf": 34, "audio": False, "timecode": True,
+        "x264_preset": "veryfast",
+    },
     "human-proxy": {
         "description": "Proxy ligero para editar o revisar: 540p, hasta 30 fps, con audio.",
         "description_en": "Light proxy for editing or reviewing: 540p, up to 30 fps, with audio.",

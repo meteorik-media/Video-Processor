@@ -11,7 +11,7 @@ All notable changes to this project are documented here.
 - Save and delete your own named presets from the interface (stored in `presets.user.json`)
 - `Video Processor.bat` and `start.sh` launchers
 - Commands `run` (single pass, ideal for a schedule), `watch`, `doctor` and `presets`
-- Presets `ai-log` (360p, 2 fps, no audio, CRF 34), `ai-log-480` and `human-proxy`; custom presets
+- Presets `ai-log` (360p, 2 fps, no audio, CRF 34), `ai-log-480`, `ai-log-fine` / `ai-log-480-fine` (5 fps) and `human-proxy`; custom presets
   via `presets.user.json` or `--preset-file`, and any value can be overridden from the command line
 - Burned-in clock with the original video's time, also correct on split videos
 - Chunking for long videos (`--chunk`) with each part's start and end in `manifest.json`

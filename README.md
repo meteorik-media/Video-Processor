@@ -10,6 +10,7 @@ Compresses raw video into lightweight proxies so an AI (or a person) can watch i
 - **Named presets**
   - `ai-log`: 360p, 2 fps, no audio, CRF 34. About 99% smaller and still readable for an AI.
   - `ai-log-480`: same at 480p, in case there is small on-screen text.
+  - `ai-log-fine` / `ai-log-480-fine`: the same two at 5 fps, for very fast action.
   - `human-proxy`: 540p, up to 30 fps, with audio, for editing or reviewing.
   - Save your own from the interface (they go to `presets.user.json`), or edit `presets.user.json` by hand (see `presets.user.example.json`) or with `--preset-file`. Any value can be overridden from the command line: `--height`, `--fps`, `--crf`, `--audio/--no-audio`.
 - **Burned-in clock** showing the ORIGINAL video's time (`hh:mm:ss.mmm`, top-left). The AI reads the minute off the screen instead of trusting the player, and it stays correct even when the video is split into parts.

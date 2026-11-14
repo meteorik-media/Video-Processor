@@ -1,6 +1,6 @@
 {
-  "ai-log-fino": {
-    "description": "Como ai-log pero a 5 fps para acción muy rápida.",
-    "height": 360, "fps": 5, "crf": 34, "audio": false, "timecode": true, "x264_preset": "veryfast"
+  "ai-log-tiny": {
+    "description": "Lo más ligero posible para una pasada rápida: 360p, 2 fps, CRF 35.",
+    "height": 360, "fps": 2, "crf": 35, "audio": false, "timecode": true, "x264_preset": "veryfast"
   }
 }

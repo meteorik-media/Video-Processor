@@ -226,7 +226,7 @@ const T = {
     needSrcOut:"Falta el origen o la salida",missing:"No se encontró",
     saveAs:"Guardar como preset propio",pNamePh:"nombre (ej. gameplay-rapido)",pDescPh:"descripción (opcional)",save:"Guardar",del:"Borrar este preset",
     presetHint:"Guarda el preset elegido con los ajustes de abajo aplicados. Se escribe en presets.user.json y también sirve por línea de comandos.",
-    saved:"Preset guardado",deleted:"Preset borrado",confirmDel:"¿Borrar el preset",mine:"(propio)"},
+    withAudio:"con audio",noAudio:"sin audio",withClock:"reloj",saved:"Preset guardado",deleted:"Preset borrado",confirmDel:"¿Borrar el preset",mine:"(propio)"},
   en:{src:"Source",add:"Add",browse:"Browse files and folders…",browseShort:"Browse…",pathPh:"Paste a file or folder path",
     srcHint:"Single files or folders (subfolders included). Originals are never touched.",
     out:"Output",outPh:"Output folder",outHint:"Created if missing. If a manifest.json is already there, what's processed gets skipped.",
@@ -246,13 +246,13 @@ const T = {
     needSrcOut:"Source or output is missing",missing:"Not found",
     saveAs:"Save as your own preset",pNamePh:"name (e.g. fast-gameplay)",pDescPh:"description (optional)",save:"Save",del:"Delete this preset",
     presetHint:"Saves the chosen preset with the settings below applied. It is written to presets.user.json and also works from the command line.",
-    saved:"Preset saved",deleted:"Preset deleted",confirmDel:"Delete preset",mine:"(yours)"}
+    withAudio:"with audio",noAudio:"no audio",withClock:"clock",saved:"Preset saved",deleted:"Preset deleted",confirmDel:"Delete preset",mine:"(yours)"}
 };
 const $ = id => document.getElementById(id);
 const store = { get(k){ try{return localStorage.getItem(k);}catch(e){return null;} }, set(k,v){ try{localStorage.setItem(k,v);}catch(e){} } };
 let lang = store.get("vp.lang") || ((navigator.language||"es").slice(0,2) === "en" ? "en" : "es");
 const t = k => (T[lang][k] ?? k);
-let S = { presets:{}, doctor:null, roots:[] };
+let S = { presets:{}, doctor:null, roots:[], user_presets:[] };
 let sources = [], tri = { audio:null, timecode:null }, since = 0, lastState = "idle", pollTimer = null;
 
 async function api(path, body){
@@ -272,7 +272,7 @@ function applyLang(){
   document.querySelectorAll("[data-i]").forEach(el => { el.textContent = t(el.dataset.i); });
   document.querySelectorAll("[data-ph]").forEach(el => { el.placeholder = t(el.dataset.ph); });
   $("langBtn").textContent = lang === "es" ? "EN" : "ES";
-  buildTri("audio"); buildTri("timecode"); if (S.user_presets) fillPresets(); renderPresetDesc(); renderDoctor(); renderState(lastState); updateRunBtn();
+  buildTri("audio"); buildTri("timecode"); fillPresets(); renderPresetDesc(); renderDoctor(); renderState(lastState); updateRunBtn();
   if ($("tab-res").style.display !== "none") loadResults();
 }
 function buildTri(key){
@@ -295,9 +295,17 @@ function fillPresets(selected){
   sel.value = S.presets[keep] ? keep : "ai-log";
 }
 function renderPresetDesc(){
-  $("pDel").style.display = S.user_presets && S.user_presets.includes($("preset").value) ? "" : "none";
-  const p = S.presets[$("preset").value]; if (!p) { $("presetDesc").textContent=""; return; }
-  $("presetDesc").textContent = (lang==="en" && p.description_en) || p.description || "";
+  $("pDel").style.display = S.user_presets.includes($("preset").value) ? "" : "none";
+  const p = S.presets[$("preset").value];
+  if (!p) { $("presetDesc").textContent=""; return; }
+  // los valores reales del preset se ven como placeholder en "Ajustes" y en un resumen
+  $("height").placeholder = p.height ?? ""; $("fps").placeholder = p.fps ?? ""; $("crf").placeholder = p.crf ?? "";
+  const sum = [p.height ? p.height+"p" : null, p.fps ? p.fps+" fps" : null, p.crf != null ? "CRF "+p.crf : null,
+    p.audio ? t("withAudio") : t("noAudio"), p.timecode ? t("withClock") : null].filter(Boolean).join(" · ");
+  $("presetDesc").innerHTML = "";
+  const b = document.createElement("div"); b.style.cssText = "font-family:var(--mono);color:var(--ink)"; b.textContent = sum;
+  const d = document.createElement("div"); d.textContent = (lang==="en" && p.description_en) || p.description || "";
+  $("presetDesc").append(b, d);
 }
 function renderSources(){
   const box = $("srcChips"); box.innerHTML = "";
@@ -454,7 +462,7 @@ $("outText").oninput = () => { updateRunBtn(); persist(); };
 $("preset").onchange = () => { renderPresetDesc(); persist(); };
 ["height","fps","crf","settle","font","chunk","scenes","interval"].forEach(k => $(k).onchange = persist);
 $("runBtn").onclick = () => lastState==="running" ? api("/api/cancel", {}).then(poll).catch(e=>toast(e.message)) : start("run");
-async function refreshPresets(selected){ S = await api("/api/state"); fillPresets(selected); renderPresetDesc(); persist(); }
+async function refreshPresets(selected){ S = await api("/api/state"); S.user_presets = S.user_presets || []; fillPresets(selected); renderPresetDesc(); persist(); }
 $("pSave").onclick = async () => {
   const num = id => $(id).value.trim()==="" ? null : $(id).value.trim();
   try{
@@ -475,7 +483,7 @@ $("refreshRes").onclick = loadResults;
 
 (async function init(){
   try{
-    S = await api("/api/state");
+    S = await api("/api/state"); S.user_presets = S.user_presets || [];
     fillPresets("ai-log"); restore(); renderSources();
     applyLang(); poll();
   }catch(e){ toast(e.message); }
