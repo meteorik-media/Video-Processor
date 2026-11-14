@@ -2,7 +2,7 @@
 
 🌐 [English version](README.md) | Español | 📝 [Changelog](CHANGELOG-ES.md)
 
-Comprime vídeo raw a proxies ligeros para que una IA (o una persona) pueda mirarlo y devolverte los minutos exactos de cada cosa, sin tocar nunca los originales. Un solo script de Python, sin dependencias y con interfaz web local, pensado para correr a mano o en un schedule. Es el hermano de [Image Processor](https://github.com/meteorik-gaming/Image-Processor): mismo aspecto, mismas ideas (presets con nombre, modo carpeta recursivo, lo que falla se salta y se cuenta), pero con ffmpeg nativo detrás de un servidor local diminuto, porque horas de raw no caben en una pestaña del navegador.
+Comprime vídeo raw a proxies ligeros para que una IA (o una persona) pueda mirarlo y devolverte los minutos exactos de cada cosa, sin tocar nunca los originales. Un solo script de Python, sin dependencias y con interfaz web local, pensado para correr a mano o en un schedule. Es el hermano de [Image Processor](https://github.com/meteorik-media/Image-Processor): mismo aspecto, mismas ideas (presets con nombre, modo carpeta recursivo, lo que falla se salta y se cuenta), pero con ffmpeg nativo detrás de un servidor local diminuto, porque horas de raw no caben en una pestaña del navegador.
 
 ## 🧰 Qué hace
 

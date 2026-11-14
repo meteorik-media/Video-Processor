@@ -2,7 +2,7 @@
 
 🌐 English | [Versión en español](README-ES.md) | 📝 [Changelog](CHANGELOG.md)
 
-Compresses raw video into lightweight proxies so an AI (or a person) can watch it and give you the exact minute of everything, without ever touching your originals. A single Python script with no dependencies and a local web interface, built to run by hand or on a schedule. It's the sibling of [Image Processor](https://github.com/meteorik-gaming/Image-Processor): same look, same ideas (named presets, recursive folder mode, failures are skipped and counted), but on native ffmpeg behind a tiny local server, because hours of raw footage don't fit in a browser tab.
+Compresses raw video into lightweight proxies so an AI (or a person) can watch it and give you the exact minute of everything, without ever touching your originals. A single Python script with no dependencies and a local web interface, built to run by hand or on a schedule. It's the sibling of [Image Processor](https://github.com/meteorik-media/Image-Processor): same look, same ideas (named presets, recursive folder mode, failures are skipped and counted), but on native ffmpeg behind a tiny local server, because hours of raw footage don't fit in a browser tab.
 
 ## 🧰 What it does
 
