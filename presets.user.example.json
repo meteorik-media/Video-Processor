@@ -1,0 +1,6 @@
+{
+  "ai-log-fino": {
+    "description": "Como ai-log pero a 5 fps para acción muy rápida.",
+    "height": 360, "fps": 5, "crf": 34, "audio": false, "timecode": true, "x264_preset": "veryfast"
+  }
+}

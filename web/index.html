@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Video Processor</title>
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#14131a; --panel:#1c1b24; --line:#2e2c3a; --ink:#e9e7f0; --dim:#8b879c;
+  --accent:#5b6ee8; --accent-dim:#363c72; --ok:#4fbf8b; --bad:#e0637a; --warn:#e0b04f;
+  --mono:'SF Mono','JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);min-height:100vh;}
+header{padding:18px 24px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;}
+header h1{font-size:15px;font-weight:600;margin:0;letter-spacing:.02em;}
+header .ver{font-family:var(--mono);font-size:12px;color:var(--dim);}
+header .sp{flex:1;}
+.badge{font-family:var(--mono);font-size:11px;padding:3px 8px;border-radius:10px;border:1px solid var(--line);cursor:default;}
+.badge.ok{color:var(--ok);border-color:#24503e;} .badge.bad{color:var(--bad);border-color:#5a2a36;}
+.lang{background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:6px;font-size:11.5px;padding:4px 9px;cursor:pointer;}
+.lang:hover{border-color:var(--accent);}
+.layout{display:grid;grid-template-columns:380px 1fr;min-height:calc(100vh - 58px);}
+@media (max-width:860px){.layout{grid-template-columns:1fr;}}
+.panel{padding:20px;border-right:1px solid var(--line);overflow-y:auto;max-height:calc(100vh - 58px);}
+@media (max-width:860px){.panel{max-height:none;border-right:none;}}
+.section{margin-bottom:20px;border-bottom:1px solid var(--line);padding-bottom:18px;}
+.section h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:0 0 10px;font-weight:600;cursor:pointer;user-select:none;display:flex;align-items:center;}
+.section h2::before{content:'▾';font-size:9px;margin-right:6px;transition:transform .15s;}
+.section.collapsed h2::before{transform:rotate(-90deg);}
+.section.collapsed>*:not(h2){display:none;}
+.hint{font-size:11.5px;color:var(--dim);line-height:1.5;margin:6px 0;}
+.field{margin-bottom:11px;}
+.field>label{display:block;font-size:12px;color:var(--dim);margin-bottom:5px;font-family:var(--mono);}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+input[type=text],input[type=number],select{width:100%;background:var(--panel);border:1px solid var(--line);color:var(--ink);font-family:var(--mono);font-size:12px;padding:7px;border-radius:6px;}
+input:focus,select:focus{outline:none;border-color:var(--accent);}
+.tri{display:flex;gap:0;border:1px solid var(--line);border-radius:6px;overflow:hidden;}
+.tri button{flex:1;background:var(--panel);border:none;color:var(--dim);font-size:11.5px;padding:6px 4px;cursor:pointer;border-right:1px solid var(--line);}
+.tri button:last-child{border-right:none;} .tri button.on{background:var(--accent-dim);color:var(--ink);}
+.btn{background:var(--panel);border:1px solid var(--line);color:var(--ink);padding:8px 12px;border-radius:6px;font-size:12px;cursor:pointer;}
+.btn:hover:not(:disabled){border-color:var(--accent);} .btn:disabled{opacity:.4;cursor:not-allowed;}
+.run-btn{width:100%;background:var(--accent);color:#fff;border:none;padding:11px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;margin-top:6px;}
+.run-btn:disabled{background:var(--accent-dim);color:var(--dim);cursor:not-allowed;}
+.run-btn.stop{background:#8a3346;}
+.btn-row{display:flex;gap:8px;margin-top:8px;} .btn-row .btn{flex:1;}
+.chips{display:flex;flex-direction:column;gap:5px;margin-bottom:8px;}
+.chip{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-family:var(--mono);font-size:11px;}
+.chip .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left;}
+.chip button{background:none;border:none;color:var(--dim);cursor:pointer;font-size:14px;}
+.chip button:hover{color:var(--bad);}
+.add-row{display:flex;gap:6px;} .add-row input{flex:1;}
+.toggle-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim);margin:8px 0;}
+.main{padding:24px;display:flex;flex-direction:column;gap:14px;min-width:0;}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);}
+.tab{padding:8px 16px;font-size:12px;color:var(--dim);cursor:pointer;border-bottom:2px solid transparent;}
+.tab.active{color:var(--ink);border-color:var(--accent);}
+.status{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:12px;color:var(--dim);flex-wrap:wrap;}
+.status b{color:var(--ink);}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--dim);} .dot.running{background:var(--accent);animation:pulse 1s infinite;} .dot.done{background:var(--ok);} .dot.failed{background:var(--bad);} .dot.cancelled{background:var(--warn);}
+@keyframes pulse{50%{opacity:.3}}
+.progress{height:6px;background:var(--panel);border-radius:3px;overflow:hidden;border:1px solid var(--line);}
+.progress div{height:100%;background:var(--accent);width:0;transition:width .2s;}
+.cmd{font-family:var(--mono);font-size:11px;color:var(--dim);word-break:break-all;}
+.log{background:#0f0e14;border:1px solid var(--line);border-radius:8px;padding:12px;font-family:var(--mono);font-size:12px;line-height:1.55;height:420px;overflow:auto;white-space:pre-wrap;word-break:break-word;}
+.log .e{color:var(--bad);} .log .ok{color:var(--ok);} .log .w{color:var(--warn);}
+.empty{color:var(--dim);font-size:13px;padding:30px;text-align:center;border:1px dashed var(--line);border-radius:10px;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);text-align:left;padding:8px;border-bottom:1px solid var(--line);}
+td{padding:8px;border-bottom:1px solid var(--line);font-family:var(--mono);vertical-align:top;}
+td.bad{color:var(--bad);} td.ok{color:var(--ok);}
+.parts{color:var(--dim);font-size:11px;}
+.stats{font-family:var(--mono);font-size:11px;color:var(--dim);display:flex;gap:16px;flex-wrap:wrap;}
+.stats b{color:var(--ink);}
+/* selector de carpetas */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;padding:20px;z-index:10;}
+.modal.open{display:flex;}
+.dlg{background:var(--bg);border:1px solid var(--line);border-radius:12px;width:min(640px,100%);max-height:86vh;display:flex;flex-direction:column;}
+.dlg header{padding:14px 18px;} .dlg .body{padding:0 18px;overflow:auto;flex:1;min-height:200px;}
+.dlg footer{padding:14px 18px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center;}
+.dlg footer .sp{flex:1;}
+.roots{display:flex;gap:6px;flex-wrap:wrap;padding:0 18px 10px;}
+.pathbar{font-family:var(--mono);font-size:12px;padding:8px 18px;color:var(--dim);word-break:break-all;}
+.entry{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:13px;}
+.entry:hover{background:var(--panel);} .entry .sz{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--dim);}
+.entry input{accent-color:var(--accent);}
+.toast{position:fixed;bottom:20px;right:20px;background:var(--panel);border:1px solid var(--bad);color:var(--ink);padding:10px 14px;border-radius:8px;font-size:12.5px;display:none;max-width:420px;z-index:20;}
+</style>
+</head>
+<body>
+<header>
+  <h1>VIDEO PROCESSOR</h1><span class="ver">v__VERSION__</span>
+  <span class="sp"></span>
+  <span class="badge" id="docBadge">…</span>
+  <button class="lang" id="langBtn">EN</button>
+</header>
+
+<div class="layout">
+<aside class="panel">
+  <div class="section" id="sec-src">
+    <h2 data-i="src">Origen</h2>
+    <div class="chips" id="srcChips"></div>
+    <div class="add-row"><input type="text" id="srcText" data-ph="pathPh"><button class="btn" id="srcAdd" data-i="add">Añadir</button></div>
+    <div class="btn-row"><button class="btn" id="srcBrowse" data-i="browse">Explorar…</button></div>
+    <p class="hint" data-i="srcHint">Archivos sueltos o carpetas (se recorren con subcarpetas). Los originales nunca se tocan.</p>
+  </div>
+
+  <div class="section" id="sec-out">
+    <h2 data-i="out">Salida</h2>
+    <div class="add-row"><input type="text" id="outText" data-ph="outPh"><button class="btn" id="outBrowse" data-i="browseShort">Explorar…</button></div>
+    <p class="hint" data-i="outHint">Se crea si no existe. Si ya hay un manifest.json, lo ya procesado se salta.</p>
+  </div>
+
+  <div class="section" id="sec-preset">
+    <h2 data-i="preset">Preset</h2>
+    <div class="field"><select id="preset"></select></div>
+    <p class="hint" id="presetDesc"></p>
+  </div>
+
+  <div class="section collapsed" id="sec-over">
+    <h2 data-i="over">Ajustes (pisan el preset)</h2>
+    <div class="row2">
+      <div class="field"><label data-i="height">Lado corto (px)</label><input type="number" id="height" min="64" step="2"></div>
+      <div class="field"><label>FPS</label><input type="number" id="fps" min="0.1" step="0.5"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>CRF</label><input type="number" id="crf" min="0" max="51"></div>
+      <div class="field"><label data-i="settle">Esperar (s)</label><input type="number" id="settle" min="0" placeholder="0"></div>
+    </div>
+    <div class="field"><label data-i="audio">Audio</label><div class="tri" id="audio"></div></div>
+    <div class="field"><label data-i="timecode">Reloj en pantalla</label><div class="tri" id="timecode"></div></div>
+    <div class="field"><label data-i="font">Fuente .ttf (opcional)</label><input type="text" id="font"></div>
+    <p class="hint" data-i="overHint">Vacío = lo que diga el preset. «Esperar» salta archivos modificados hace menos de N segundos (por si aún se graban).</p>
+  </div>
+
+  <div class="section" id="sec-split">
+    <h2 data-i="split">Trozos y escenas</h2>
+    <div class="row2">
+      <div class="field"><label data-i="chunk">Trocear cada</label><input type="text" id="chunk" placeholder="30m"></div>
+      <div class="field"><label data-i="scenes">Escenas (umbral)</label><input type="number" id="scenes" min="0" max="1" step="0.05" placeholder="0.3"></div>
+    </div>
+    <p class="hint" data-i="splitHint">Trocear: 30m, 90s, 1h… (vacío = un solo archivo). Escenas: cambios candidatos en markers.csv (0.3 es un buen punto de partida).</p>
+    <label class="toggle-row"><input type="checkbox" id="force"> <span data-i="force">Reprocesar aunque ya esté al día</span></label>
+  </div>
+
+  <div class="section" id="sec-watch">
+    <h2 data-i="watch">Vigilar carpeta</h2>
+    <div class="field"><label data-i="interval">Revisar cada (s)</label><input type="number" id="interval" min="5" value="300"></div>
+    <p class="hint" data-i="watchHint">Con «Vigilar» el proceso queda activo y procesa lo nuevo en cada pasada. Para algo que sobreviva al cierre de esta ventana usa un schedule (ver README).</p>
+  </div>
+
+  <button class="run-btn" id="runBtn" data-i="run">Procesar</button>
+  <div class="btn-row">
+    <button class="btn" id="dryBtn" data-i="dry">Vista previa</button>
+    <button class="btn" id="watchBtn" data-i="watchBtn">Vigilar</button>
+  </div>
+</aside>
+
+<section class="main">
+  <div class="tabs">
+    <div class="tab active" data-tab="log" data-i="tabLog">Progreso</div>
+    <div class="tab" data-tab="res" data-i="tabRes">Resultados</div>
+  </div>
+
+  <div id="tab-log">
+    <div class="status"><span class="dot" id="dot"></span><b id="stateTxt">—</b><span id="progLabel"></span></div>
+    <div class="progress" style="margin:10px 0"><div id="bar"></div></div>
+    <div class="cmd" id="cmd"></div>
+    <div class="log" id="log"></div>
+  </div>
+
+  <div id="tab-res" style="display:none">
+    <div class="stats" id="resStats"></div>
+    <div class="btn-row" style="max-width:420px">
+      <button class="btn" id="openOut" data-i="openOut">Abrir carpeta de salida</button>
+      <button class="btn" id="refreshRes" data-i="refresh">Actualizar</button>
+    </div>
+    <div id="resBody" style="margin-top:14px"></div>
+  </div>
+</section>
+</div>
+
+<div class="modal" id="modal">
+  <div class="dlg">
+    <header><h1 id="mTitle"></h1></header>
+    <div class="roots" id="mRoots"></div>
+    <div class="pathbar" id="mPath"></div>
+    <div class="body" id="mList"></div>
+    <footer>
+      <button class="btn" id="mUp" data-i="up">↑ Subir</button>
+      <span class="sp"></span>
+      <button class="btn" id="mCancel" data-i="cancel">Cancelar</button>
+      <button class="btn" id="mOk" style="background:var(--accent);border-color:var(--accent)"></button>
+    </footer>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const TOKEN = "__TOKEN__";
+const T = {
+  es:{src:"Origen",add:"Añadir",browse:"Explorar archivos y carpetas…",browseShort:"Explorar…",pathPh:"Pega una ruta de archivo o carpeta",
+    srcHint:"Archivos sueltos o carpetas (se recorren con subcarpetas). Los originales nunca se tocan.",
+    out:"Salida",outPh:"Carpeta de salida",outHint:"Se crea si no existe. Si ya hay un manifest.json, lo ya procesado se salta.",
+    preset:"Preset",over:"Ajustes (pisan el preset)",height:"Lado corto (px)",settle:"Esperar (s)",audio:"Audio",timecode:"Reloj en pantalla",
+    font:"Fuente .ttf (opcional)",overHint:"Vacío = lo que diga el preset. «Esperar» salta archivos modificados hace menos de N segundos (por si aún se graban).",
+    split:"Trozos y escenas",chunk:"Trocear cada",scenes:"Escenas (umbral)",splitHint:"Trocear: 30m, 90s, 1h… (vacío = un solo archivo). Escenas: cambios candidatos en markers.csv (0.3 es un buen punto de partida).",
+    force:"Reprocesar aunque ya esté al día",watch:"Vigilar carpeta",interval:"Revisar cada (s)",
+    watchHint:"Con «Vigilar» el proceso queda activo y procesa lo nuevo en cada pasada. Para algo que sobreviva al cierre de esta ventana usa un schedule (ver README).",
+    run:"Procesar",dry:"Vista previa",watchBtn:"Vigilar",stop:"Detener",tabLog:"Progreso",tabRes:"Resultados",
+    openOut:"Abrir carpeta de salida",refresh:"Actualizar",up:"↑ Subir",cancel:"Cancelar",
+    inherit:"Preset",yes:"Sí",no:"No",
+    idle:"Listo para empezar",running:"Procesando…",done:"Terminado",failed:"Terminó con errores",cancelled:"Detenido",
+    pickSrc:"Elige archivos o carpetas",pickOut:"Elige la carpeta de salida",selectFolder:"Elegir esta carpeta",addSelected:"Añadir selección",
+    addFolder:"Añadir esta carpeta",noVideos:"Sin vídeos ni subcarpetas aquí",doctorOk:"ffmpeg listo",doctorBad:"Falta algo en ffmpeg",
+    noRes:"Todavía no hay resultados en esta carpeta de salida.",colId:"Archivo",colState:"Estado",colDur:"Duración",colSize:"Peso",colParts:"Salida",colScenes:"Escenas",
+    files:"archivos",ok:"ok",failedN:"con error",reduced:"reducido",
+    needSrcOut:"Falta el origen o la salida",missing:"No se encontró"},
+  en:{src:"Source",add:"Add",browse:"Browse files and folders…",browseShort:"Browse…",pathPh:"Paste a file or folder path",
+    srcHint:"Single files or folders (subfolders included). Originals are never touched.",
+    out:"Output",outPh:"Output folder",outHint:"Created if missing. If a manifest.json is already there, what's processed gets skipped.",
+    preset:"Preset",over:"Settings (override the preset)",height:"Short side (px)",settle:"Settle (s)",audio:"Audio",timecode:"Burned-in clock",
+    font:"Font .ttf (optional)",overHint:"Empty = whatever the preset says. “Settle” skips files modified less than N seconds ago (in case they're still being recorded).",
+    split:"Chunks & scenes",chunk:"Split every",scenes:"Scenes (threshold)",splitHint:"Split: 30m, 90s, 1h… (empty = a single file). Scenes: candidate changes in markers.csv (0.3 is a good start).",
+    force:"Reprocess even if up to date",watch:"Watch folder",interval:"Check every (s)",
+    watchHint:"“Watch” keeps the process alive and handles new files on every pass. For something that survives closing this window, use a schedule (see README).",
+    run:"Process",dry:"Preview",watchBtn:"Watch",stop:"Stop",tabLog:"Progress",tabRes:"Results",
+    openOut:"Open output folder",refresh:"Refresh",up:"↑ Up",cancel:"Cancel",
+    inherit:"Preset",yes:"Yes",no:"No",
+    idle:"Ready to start",running:"Processing…",done:"Finished",failed:"Finished with errors",cancelled:"Stopped",
+    pickSrc:"Pick files or folders",pickOut:"Pick the output folder",selectFolder:"Choose this folder",addSelected:"Add selection",
+    addFolder:"Add this folder",noVideos:"No videos or subfolders here",doctorOk:"ffmpeg ready",doctorBad:"ffmpeg is missing something",
+    noRes:"No results in this output folder yet.",colId:"File",colState:"Status",colDur:"Duration",colSize:"Size",colParts:"Output",colScenes:"Scenes",
+    files:"files",ok:"ok",failedN:"failed",reduced:"smaller",
+    needSrcOut:"Source or output is missing",missing:"Not found"}
+};
+const $ = id => document.getElementById(id);
+const store = { get(k){ try{return localStorage.getItem(k);}catch(e){return null;} }, set(k,v){ try{localStorage.setItem(k,v);}catch(e){} } };
+let lang = store.get("vp.lang") || ((navigator.language||"es").slice(0,2) === "en" ? "en" : "es");
+const t = k => (T[lang][k] ?? k);
+let S = { presets:{}, doctor:null, roots:[] };
+let sources = [], tri = { audio:null, timecode:null }, since = 0, lastState = "idle", pollTimer = null;
+
+async function api(path, body){
+  const opt = { headers:{ "X-VP-Token":TOKEN } };
+  if (body !== undefined){ opt.method="POST"; opt.headers["Content-Type"]="application/json"; opt.body=JSON.stringify(body); }
+  const r = await fetch(path, opt);
+  const j = await r.json().catch(()=>({error:"respuesta no válida"}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+function toast(msg){ const el=$("toast"); el.textContent=msg; el.style.display="block"; clearTimeout(toast.t); toast.t=setTimeout(()=>el.style.display="none",5000); }
+function fmtSize(n){ n=+n||0; const u=["B","KB","MB","GB","TB"]; let i=0; while(n>=1024&&i<4){n/=1024;i++;} return (i?n.toFixed(1):n.toFixed(0))+" "+u[i]; }
+function fmtHms(s){ s=Math.max(0,Math.round(+s||0)); return [Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(x=>String(x).padStart(2,"0")).join(":"); }
+
+function applyLang(){
+  document.documentElement.lang = lang;
+  document.querySelectorAll("[data-i]").forEach(el => { el.textContent = t(el.dataset.i); });
+  document.querySelectorAll("[data-ph]").forEach(el => { el.placeholder = t(el.dataset.ph); });
+  $("langBtn").textContent = lang === "es" ? "EN" : "ES";
+  buildTri("audio"); buildTri("timecode"); renderPresetDesc(); renderDoctor(); renderState(lastState); updateRunBtn();
+  if ($("tab-res").style.display !== "none") loadResults();
+}
+function buildTri(key){
+  const box = $(key); box.innerHTML = "";
+  [[null,t("inherit")],[true,t("yes")],[false,t("no")]].forEach(([val,label]) => {
+    const b = document.createElement("button"); b.textContent = label; b.className = tri[key]===val ? "on" : "";
+    b.onclick = () => { tri[key]=val; buildTri(key); }; box.appendChild(b);
+  });
+}
+function renderDoctor(){
+  const d = S.doctor, el = $("docBadge"); if (!d) return;
+  el.className = "badge " + (d.ok ? "ok" : "bad");
+  el.textContent = (d.ok ? "✓ " : "✗ ") + (d.ok ? t("doctorOk") : t("doctorBad"));
+  el.title = ["ffmpeg","ffprobe","libx264","aac","drawtext","scene"].map(k => (d[k]?"✓ ":"✗ ")+k).join("\n") + "\nfont: " + (d.font||"—");
+}
+function renderPresetDesc(){
+  const p = S.presets[$("preset").value]; if (!p) { $("presetDesc").textContent=""; return; }
+  $("presetDesc").textContent = (lang==="en" && p.description_en) || p.description || "";
+}
+function renderSources(){
+  const box = $("srcChips"); box.innerHTML = "";
+  sources.forEach((s,i) => {
+    const c = document.createElement("div"); c.className="chip";
+    const tt = document.createElement("span"); tt.className="t"; tt.textContent = "\u200E"+s; tt.title = s;
+    const x = document.createElement("button"); x.textContent="✕"; x.onclick=()=>{ sources.splice(i,1); renderSources(); persist(); };
+    c.append(tt,x); box.appendChild(c);
+  });
+  updateRunBtn();
+}
+function updateRunBtn(){
+  const busy = lastState === "running", ready = sources.length && $("outText").value.trim();
+  $("runBtn").disabled = !busy && !ready; $("dryBtn").disabled = busy || !ready; $("watchBtn").disabled = busy || !ready;
+  $("runBtn").textContent = busy ? t("stop") : t("run"); $("runBtn").classList.toggle("stop", busy);
+}
+function persist(){
+  store.set("vp.form", JSON.stringify({ sources, out:$("outText").value, preset:$("preset").value,
+    f:["height","fps","crf","settle","font","chunk","scenes","interval"].reduce((a,k)=>(a[k]=$(k).value,a),{}), tri }));
+}
+function restore(){
+  try{
+    const f = JSON.parse(store.get("vp.form")||"null"); if(!f) return;
+    sources = f.sources||[]; $("outText").value = f.out||"";
+    if (f.preset && S.presets[f.preset]) $("preset").value = f.preset;
+    Object.entries(f.f||{}).forEach(([k,v])=>{ if ($(k)) $(k).value = v; });
+    tri = Object.assign(tri, f.tri||{});
+  }catch(e){}
+}
+
+/* ── selector de carpetas del servidor ── */
+let M = { mode:null, path:"", parent:null, picked:new Set() };
+async function openBrowser(mode, start){
+  M = { mode, path:start||"", parent:null, picked:new Set() };
+  $("mTitle").textContent = mode==="out" ? t("pickOut") : t("pickSrc");
+  $("modal").classList.add("open");
+  $("mRoots").innerHTML = "";
+  S.roots.forEach(r => { const b=document.createElement("button"); b.className="btn"; b.textContent=r; b.onclick=()=>loadDir(r); $("mRoots").appendChild(b); });
+  loadDir(M.path || (mode==="out" ? $("outText").value : "") || "");
+}
+async function loadDir(path){
+  try{
+    const d = await api("/api/browse?path="+encodeURIComponent(path));
+    M.path = d.path; M.parent = d.parent; M.picked.clear();
+    $("mPath").textContent = d.path; $("mUp").disabled = !d.parent;
+    const list = $("mList"); list.innerHTML = "";
+    if (!d.dirs.length && !d.videos.length){ const e=document.createElement("div"); e.className="hint"; e.style.padding="14px 0"; e.textContent=t("noVideos"); list.appendChild(e); }
+    d.dirs.forEach(n => {
+      const row = document.createElement("div"); row.className="entry"; row.textContent = "📁 "+n;
+      row.onclick = () => loadDir(d.path.replace(/[\\/]$/,"") + (d.path.includes("\\")?"\\":"/") + n); list.appendChild(row);
+    });
+    if (M.mode==="src") d.videos.forEach(v => {
+      const row = document.createElement("label"); row.className="entry";
+      const cb = document.createElement("input"); cb.type="checkbox";
+      cb.onchange = () => { cb.checked ? M.picked.add(v.name) : M.picked.delete(v.name); updateOk(); };
+      const nm = document.createElement("span"); nm.textContent = "🎞 "+v.name;
+      const sz = document.createElement("span"); sz.className="sz"; sz.textContent = fmtSize(v.size);
+      row.append(cb,nm,sz); list.appendChild(row);
+    });
+    updateOk();
+  }catch(e){ toast(e.message); }
+}
+function updateOk(){
+  $("mOk").textContent = M.mode==="out" ? t("selectFolder") : (M.picked.size ? `${t("addSelected")} (${M.picked.size})` : t("addFolder"));
+}
+function joinPath(dir, name){ return dir.replace(/[\\/]$/,"") + (dir.includes("\\")?"\\":"/") + name; }
+$("mUp").onclick = () => M.parent && loadDir(M.parent);
+$("mCancel").onclick = () => $("modal").classList.remove("open");
+$("mOk").onclick = () => {
+  if (M.mode==="out") $("outText").value = M.path;
+  else if (M.picked.size) M.picked.forEach(n => { const p=joinPath(M.path,n); if(!sources.includes(p)) sources.push(p); });
+  else if (!sources.includes(M.path)) sources.push(M.path);
+  $("modal").classList.remove("open"); renderSources(); persist(); updateRunBtn();
+};
+
+/* ── ejecución y sondeo ── */
+function payload(mode){
+  const num = id => $(id).value.trim()==="" ? null : $(id).value.trim();
+  return { mode, inputs:sources, output:$("outText").value.trim(), preset:$("preset").value,
+    height:num("height"), fps:num("fps"), crf:num("crf"), settle:num("settle"), scenes:num("scenes"), interval:num("interval"),
+    chunk:$("chunk").value.trim(), audio:tri.audio, timecode:tri.timecode, font:$("font").value.trim(), force:$("force").checked };
+}
+async function start(mode){
+  if (!sources.length || !$("outText").value.trim()) return toast(t("needSrcOut"));
+  persist();
+  try{
+    await api("/api/start", payload(mode));
+    since = 0; $("log").innerHTML = ""; showTab("log"); poll();
+  }catch(e){ toast(e.message); }
+}
+function colorize(line){
+  const d = document.createElement("div"); d.textContent = line;
+  if (/✗|error|falló/i.test(line)) d.className="e"; else if (/✓/.test(line)) d.className="ok"; else if (/^!/.test(line)) d.className="w";
+  return d;
+}
+function renderState(st){
+  $("dot").className = "dot " + st; $("stateTxt").textContent = t(st);
+}
+async function poll(){
+  clearTimeout(pollTimer);
+  try{
+    const j = await api("/api/job?since="+since);
+    const log = $("log"), atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 30;
+    j.lines.forEach(l => log.appendChild(colorize(l))); since = j.total;
+    if (atEnd) log.scrollTop = log.scrollHeight;
+    const was = lastState; lastState = j.state; renderState(j.state);
+    $("bar").style.width = (j.state==="idle" ? 0 : j.progress.pct) + "%";
+    $("progLabel").textContent = j.state==="running" ? `${j.progress.label} ${j.progress.pct}%` : "";
+    $("cmd").textContent = j.cmd || "";
+    updateRunBtn();
+    if (was==="running" && j.state!=="running") loadResults();
+    if (j.state==="running") pollTimer = setTimeout(poll, 700);
+  }catch(e){ pollTimer = setTimeout(poll, 2000); }
+}
+async function loadResults(){
+  const out = $("outText").value.trim(); const body = $("resBody"), stats = $("resStats");
+  if (!out){ body.innerHTML=""; stats.textContent=""; return; }
+  try{
+    const r = await api("/api/results?output="+encodeURIComponent(out));
+    if (!r.items.length){ stats.textContent=""; body.innerHTML = `<div class="empty">${t("noRes")}</div>`; return; }
+    const ok = r.items.filter(i=>i.status==="ok"), bad = r.items.length-ok.length;
+    const inSz = ok.reduce((a,i)=>a+(i.src_size||0),0), outSz = ok.reduce((a,i)=>a+i.outputs.reduce((b,o)=>b+o.size,0),0);
+    stats.innerHTML = `<span><b>${r.items.length}</b> ${t("files")}</span><span><b>${ok.length}</b> ${t("ok")}</span>` +
+      (bad?`<span style="color:var(--bad)"><b>${bad}</b> ${t("failedN")}</span>`:"") +
+      (inSz?`<span><b>${fmtSize(inSz)}</b> → <b>${fmtSize(outSz)}</b> (−${((1-outSz/inSz)*100).toFixed(1)}%)</span>`:"") +
+      (r.markers_csv?"<span>markers.csv ✓</span>":"") + (r.log_csv?"<span>log_raw.csv ✓</span>":"");
+    const tb = document.createElement("table");
+    tb.innerHTML = `<tr><th>${t("colId")}</th><th>${t("colState")}</th><th>${t("colDur")}</th><th>${t("colSize")}</th><th>${t("colParts")}</th><th>${t("colScenes")}</th></tr>`;
+    r.items.forEach(i => {
+      const tr = document.createElement("tr"), sz = i.outputs.reduce((a,o)=>a+o.size,0);
+      const cell = (txt, cls) => { const td=document.createElement("td"); td.textContent=txt; if(cls) td.className=cls; tr.appendChild(td); return td; };
+      cell(i.id); cell(i.status==="ok"?"✓":"✗ "+(i.error||""), i.status==="ok"?"ok":"bad");
+      cell(i.duration?fmtHms(i.duration):"—"); cell(i.status==="ok" ? `${fmtSize(i.src_size)} → ${fmtSize(sz)}` : "—");
+      const td = cell(""); i.outputs.forEach(o => { const d=document.createElement("div"); d.className="parts"; d.textContent=`${o.file}  ${fmtHms(o.start)}–${fmtHms(o.end)}`; td.appendChild(d); });
+      cell(i.markers||"—"); tb.appendChild(tr);
+    });
+    body.innerHTML = ""; body.appendChild(tb);
+  }catch(e){ body.innerHTML = `<div class="empty">${e.message}</div>`; }
+}
+function showTab(name){
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active", x.dataset.tab===name));
+  $("tab-log").style.display = name==="log"?"":"none"; $("tab-res").style.display = name==="res"?"":"none";
+  if (name==="res") loadResults();
+}
+
+document.querySelectorAll(".section h2").forEach(h => h.onclick = () => h.parentElement.classList.toggle("collapsed"));
+document.querySelectorAll(".tab").forEach(x => x.onclick = () => showTab(x.dataset.tab));
+$("langBtn").onclick = () => { lang = lang==="es"?"en":"es"; store.set("vp.lang", lang); applyLang(); };
+$("srcAdd").onclick = () => { const v=$("srcText").value.trim().replace(/^"|"$/g,""); if(v && !sources.includes(v)){ sources.push(v); $("srcText").value=""; renderSources(); persist(); } };
+$("srcText").onkeydown = e => { if (e.key==="Enter") $("srcAdd").click(); };
+$("srcBrowse").onclick = () => openBrowser("src", "");
+$("outBrowse").onclick = () => openBrowser("out", "");
+$("outText").oninput = () => { updateRunBtn(); persist(); };
+$("preset").onchange = () => { renderPresetDesc(); persist(); };
+["height","fps","crf","settle","font","chunk","scenes","interval"].forEach(k => $(k).onchange = persist);
+$("runBtn").onclick = () => lastState==="running" ? api("/api/cancel", {}).then(poll).catch(e=>toast(e.message)) : start("run");
+$("dryBtn").onclick = () => start("dry");
+$("watchBtn").onclick = () => start("watch");
+$("openOut").onclick = () => api("/api/open", { path:$("outText").value.trim() }).catch(e=>toast(e.message));
+$("refreshRes").onclick = loadResults;
+
+(async function init(){
+  try{
+    S = await api("/api/state");
+    const sel = $("preset"); Object.keys(S.presets).sort().forEach(n => { const o=document.createElement("option"); o.value=n; o.textContent=n; sel.appendChild(o); });
+    sel.value = "ai-log"; restore(); renderSources();
+    applyLang(); poll();
+  }catch(e){ toast(e.message); }
+})();
+</script>
+</body>
+</html>
