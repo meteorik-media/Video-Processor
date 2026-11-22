@@ -11,6 +11,8 @@ Uso rápido:
     python video_processor.py doctor
     python video_processor.py run  RAW/ -o SALIDA/ --preset ai-log --chunk 30m --scenes 0.3
     python video_processor.py watch RAW/ -o SALIDA/ --interval 300
+    python video_processor.py frames RAW/ -o FRAMES/ --fps 24 --format png --zip
+    python video_processor.py assemble FRAMES/ -o VIDEOS/ --format mp4 --audio
 """
 from __future__ import annotations
 
@@ -27,11 +29,12 @@ import sys
 import tempfile
 import threading
 import time
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".avi", ".webm", ".flv", ".ts", ".m4v", ".wmv"}
 MANIFEST_NAME = "manifest.json"
@@ -39,6 +42,8 @@ MARKERS_NAME = "markers.csv"
 LOG_NAME = "log_raw.csv"
 LOG_HEADER = ["archivo", "entrada", "salida", "que_se_ve", "tipo", "calidad", "uso_sugerido", "notas"]
 USER_PRESETS_NAME = "presets.user.json"
+FRAME_FORMATS = ("png", "jpg")
+ASSEMBLE_FORMATS = ("mp4", "webm", "gif")
 
 # Presets nombrados (igual que en Image Processor, pero en JSON). Se pueden añadir o pisar con
 # presets.user.json junto al script, o con --preset-file.
@@ -466,7 +471,7 @@ def entry_is_current(entry, st, settings, out_dir):
     return (entry and entry.get("status") == "ok"
             and entry.get("size") == st.st_size and abs(entry.get("mtime", 0) - st.st_mtime) < 1
             and entry.get("settings") == settings
-            and all((out_dir / o["file"]).is_file() for o in entry.get("outputs", [])))
+            and all((out_dir / o["file"]).exists() for o in entry.get("outputs", [])))
 
 
 def process_file(src, rel, st, settings, preset_name, out_dir, font, label, args):
@@ -585,6 +590,275 @@ def run_once(args, presets):
     print(f"\nListo en {secs:.0f}s · procesados {done} · ya al día {skipped} · pendientes {waiting} · con error {failed}")
     if total_in:
         print(f"Peso: {fmt_size(total_in)} → {fmt_size(total_out)} (−{(1 - total_out / total_in) * 100:.1f}%)")
+    return 1 if failed else 0
+
+
+def frames_settings(args):
+    if args.format not in FRAME_FORMATS:
+        raise SystemExit(f"✗ Formato no válido: {args.format}. Usa {' o '.join(FRAME_FORMATS)}")
+    if args.fps is not None and args.fps <= 0:
+        raise SystemExit("✗ --fps debe ser mayor que 0")
+    return {"mode": "frames", "fps": args.fps if args.fps is not None else 24.0, "format": args.format,
+            "height": args.height or 0, "zip": bool(args.zip)}
+
+
+def extract_frames(src, dst_dir, info, settings, label):
+    """Un frame cada 1/fps segundos en dst_dir (frame_0001.png…). Devuelve cuántos frames salieron."""
+    fps = settings["fps"]
+    pad = len(str(max(1, int(info["duration"] * fps))))
+    parts = [f"fps={fps:g}"]
+    w, h = target_size(info["width"], info["height"], settings.get("height"))
+    if (w, h) != (info["width"], info["height"]):
+        parts.append(f"scale={w}:{h}:flags=bicubic")
+    cmd = [tool("ffmpeg"), "-hide_banner", "-nostdin", "-y", "-v", "error", "-progress", "pipe:1", "-nostats",
+           "-i", str(src), "-map", "0:v:0", "-an", "-vf", ",".join(parts)]
+    cmd += ["-q:v", "2"] if settings["format"] == "jpg" else []
+    cmd += [str(dst_dir / f"frame_%0{pad}d.{settings['format']}")]
+    rc, err = run_ffmpeg(cmd, info["duration"], label)
+    if rc != 0:
+        raise RuntimeError("ffmpeg falló: " + clean_err(err, 500))
+    n = sum(1 for _ in dst_dir.glob(f"frame_*.{settings['format']}"))
+    if not n:
+        raise RuntimeError("ffmpeg no sacó ningún frame")
+    return n
+
+
+def process_frames(src, rel, settings, out_dir, label):
+    info = probe(src)
+    final_name = f"{src.stem}.frames" + (".zip" if settings["zip"] else "")
+    final = out_dir / rel.parent / final_name
+    final.parent.mkdir(parents=True, exist_ok=True)
+    tmp_dir = final.with_name(final.name + ".part")
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+    tmp_dir.mkdir()
+    try:
+        n = extract_frames(src, tmp_dir, info, settings, f"{label} {src.stem}")
+        if settings["zip"]:
+            tmp_zip = final.with_name(final.name + ".tmp")
+            with zipfile.ZipFile(tmp_zip, "w", zipfile.ZIP_STORED) as z:  # PNG/JPG ya van comprimidos
+                for f in sorted(tmp_dir.iterdir()):
+                    z.write(f, f.name)
+            os.replace(tmp_zip, final)
+            size = final.stat().st_size
+        else:
+            if final.exists():
+                shutil.rmtree(final)
+            os.replace(tmp_dir, final)
+            size = sum(f.stat().st_size for f in final.iterdir())
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        final.with_name(final.name + ".tmp").unlink(missing_ok=True)
+    return info, [{"file": (rel.parent / final_name).as_posix(), "start": 0.0, "end": round(info["duration"], 3),
+                   "size": size, "frames": n}]
+
+
+def run_frames(args):
+    out_dir = Path(args.output)
+    settings = frames_settings(args)
+    files = collect_files(args.inputs, out_dir)
+    if not files:
+        print("No hay vídeos que procesar.")
+        return 0
+    multi_input = len(args.inputs) > 1
+    if not args.dry_run:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    manifest = load_manifest(out_dir) if out_dir.exists() else {"version": 1, "entries": {}}
+    done = skipped = failed = waiting = 0
+    t0 = time.time()
+    for n, (root, src, is_dir_root) in enumerate(files, 1):
+        rel = src.relative_to(root)
+        if is_dir_root and multi_input:
+            rel = Path(root.name) / rel
+        key = f"{rel.as_posix()}|frames"
+        st = src.stat()
+        label = f"[{n}/{len(files)}]"
+        if args.settle and time.time() - st.st_mtime < args.settle:
+            waiting += 1
+            print(f"{label} {src.name}: se modificó hace poco, lo dejo para la próxima pasada")
+            continue
+        if not args.force and entry_is_current(manifest["entries"].get(key), st, settings, out_dir):
+            skipped += 1
+            continue
+        if args.dry_run:
+            try:
+                info = probe(src)
+            except RuntimeError as err:
+                print(f"{label} {src.name}: ✗ {err}")
+                failed += 1
+                continue
+            w, h = target_size(info["width"], info["height"], settings["height"])
+            print(f"{label} {src.name}: {fmt_hms(info['duration'])} {info['width']}x{info['height']} -> {w}x{h}, "
+                  f"~{max(1, int(info['duration'] * settings['fps']))} frames {settings['format'].upper()} "
+                  f"a {settings['fps']:g} fps")
+            continue
+        try:
+            info, outputs = process_frames(src, rel, settings, out_dir, label)
+        except Exception as err:  # noqa: BLE001 - un fallo no debe parar el lote
+            failed += 1
+            print(f"{label} {src.name}: ✗ {err}")
+            manifest["entries"][key] = {
+                "id": src.stem, "source": str(src), "size": st.st_size, "mtime": st.st_mtime,
+                "preset": "frames", "settings": settings, "status": "failed",
+                "error": str(err)[-500:], "processed_at": now_iso(), "outputs": []}
+            save_manifest(out_dir, manifest)
+            continue
+        done += 1
+        manifest["entries"][key] = {
+            "id": src.stem, "source": str(src), "size": st.st_size, "mtime": st.st_mtime,
+            "duration": round(info["duration"], 3), "fps": round(info["fps"], 3),
+            "width": info["width"], "height": info["height"], "preset": "frames",
+            "settings": settings, "status": "ok", "processed_at": now_iso(), "outputs": outputs, "markers": []}
+        save_manifest(out_dir, manifest)
+        print(f"{label} {src.name}: ✓ {outputs[0]['frames']} frames {settings['format'].upper()} "
+              f"a {settings['fps']:g} fps ({fmt_size(outputs[0]['size'])})")
+    print(f"\nListo en {time.time() - t0:.0f}s · procesados {done} · ya al día {skipped} · pendientes {waiting} · con error {failed}")
+    return 1 if failed else 0
+
+
+FRAME_RE = re.compile(r"frame_(\d+)\.(png|jpg)$")
+
+
+def sequence_frames(folder):
+    """Frames numerados de una carpeta: [(número, ruta)] ordenados, de una sola extensión."""
+    found = [(int(m.group(1)), f, m.group(2)) for f in Path(folder).iterdir()
+             if f.is_file() and (m := FRAME_RE.fullmatch(f.name))]
+    if not found:
+        return []
+    ext = sorted({e for _, _, e in found})[0]
+    return sorted((n, f) for n, f, e in found if e == ext)
+
+
+def find_sequences(inputs):
+    """[(raíz, ruta, es_carpeta_raíz)]: carpetas con frames_NNNN.png/jpg o .zip de frames, recorriendo subcarpetas."""
+    found = []
+    for inp in inputs:
+        p = Path(inp)
+        if p.is_file() and p.suffix.lower() == ".zip":
+            found.append((p.parent, p, False))
+        elif p.is_dir():
+            if sequence_frames(p):
+                found.append((p.parent, p, False))
+                continue
+            seen = set()
+            for f in sorted(p.rglob("*")):
+                if f.is_file() and f.suffix.lower() == ".zip" and not f.name.startswith("."):
+                    found.append((p, f, True))
+                elif f.is_file() and FRAME_RE.fullmatch(f.name) and f.parent not in seen:
+                    seen.add(f.parent)
+                    found.append((p, f.parent, True))
+        else:
+            print(f"! No existe o no sirve: {p}")
+    return found
+
+
+def sequence_origin(root, seq):
+    """(fps, vídeo original) de una secuencia sacada por este programa, según el manifest.json de su carpeta."""
+    mpath = Path(root) / MANIFEST_NAME
+    if not mpath.is_file():
+        return None, None
+    try:
+        entries = json.loads(mpath.read_text(encoding="utf-8")).get("entries", {})
+    except (OSError, ValueError):
+        return None, None
+    rel = Path(seq).relative_to(root).as_posix()
+    for e in entries.values():
+        if e.get("status") == "ok" and any(o.get("file") == rel for o in e.get("outputs", [])):
+            src = e.get("source")
+            return (e.get("settings") or {}).get("fps"), (src if src and Path(src).is_file() else None)
+    return None, None
+
+
+def assemble_sequence(folder, dst, fmt, fps, audio_src, crf, label):
+    frames = sequence_frames(folder)
+    if not frames:
+        raise RuntimeError("no hay frames frame_NNNN.png/jpg")
+    first = frames[0][1]
+    digits = len(FRAME_RE.fullmatch(first.name).group(1))
+    ext = first.suffix
+    pattern = str(Path(folder) / f"frame_%0{digits}d{ext}")
+    cmd = [tool("ffmpeg"), "-hide_banner", "-nostdin", "-y", "-v", "error", "-progress", "pipe:1", "-nostats",
+           "-framerate", f"{fps:g}", "-start_number", str(frames[0][0]), "-i", pattern]
+    use_audio = bool(audio_src) and fmt != "gif"
+    if use_audio:
+        cmd += ["-i", str(audio_src)]
+    even = "scale=trunc(iw/2)*2:trunc(ih/2)*2"
+    if fmt == "gif":
+        cmd += ["-vf", f"{even},split[a][b];[a]palettegen[p];[b][p]paletteuse", "-loop", "0", "-f", "gif"]
+    elif fmt == "webm":
+        cmd += ["-map", "0:v:0", "-vf", even, "-c:v", "libvpx-vp9", "-crf", str(max(crf, 20) + 10),
+                "-b:v", "0", "-pix_fmt", "yuv420p"]
+        cmd += ["-map", "1:a:0?", "-c:a", "libopus", "-shortest"] if use_audio else ["-an"]
+        cmd += ["-f", "webm"]
+    else:
+        cmd += ["-map", "0:v:0", "-vf", even, "-c:v", "libx264", "-preset", "medium", "-crf", str(crf),
+                "-pix_fmt", "yuv420p"]
+        cmd += ["-map", "1:a:0?", "-c:a", "aac", "-b:a", "128k", "-shortest"] if use_audio else ["-an"]
+        cmd += ["-movflags", "+faststart", "-f", "mp4"]
+    tmp = dst.with_name(dst.name + ".part")
+    try:
+        rc, err = run_ffmpeg(cmd + [str(tmp)], len(frames) / fps, label)
+        if rc != 0:
+            raise RuntimeError("ffmpeg falló: " + clean_err(err, 500))
+        os.replace(tmp, dst)
+    finally:
+        tmp.unlink(missing_ok=True)
+    return len(frames), dst.stat().st_size
+
+
+def run_assemble(args):
+    if args.format not in ASSEMBLE_FORMATS:
+        raise SystemExit(f"✗ Formato no válido: {args.format}. Usa {', '.join(ASSEMBLE_FORMATS)}")
+    if args.fps is not None and args.fps <= 0:
+        raise SystemExit("✗ --fps debe ser mayor que 0")
+    out_dir = Path(args.output)
+    seqs = find_sequences(args.inputs)
+    if not seqs:
+        print("No encontré carpetas de frames (frame_0001.png…) ni .zip.")
+        return 0
+    multi_input = len(args.inputs) > 1
+    done = skipped = failed = 0
+    t0 = time.time()
+    for n, (root, seq, is_dir_root) in enumerate(seqs, 1):
+        label = f"[{n}/{len(seqs)}]"
+        rel = seq.relative_to(root)
+        stem = re.sub(r"\.frames$", "", seq.stem if seq.is_file() else seq.name)
+        rel_parent = (Path(root.name) / rel.parent) if multi_input and is_dir_root else rel.parent
+        dst = out_dir / rel_parent / f"{stem}.assembled.{args.format}"
+        if dst.exists() and not args.force:
+            skipped += 1
+            continue
+        known_fps, origin = sequence_origin(root, seq)
+        fps = args.fps or known_fps or 24.0
+        audio_src = None
+        if args.audio:
+            audio_src = origin
+            if not origin and not args.dry_run:
+                print(f"! {label} {stem}: no encuentro el vídeo original en el manifest, sale sin audio")
+        if args.dry_run:
+            print(f"{label} {seq.name}: -> {dst.name} a {fps:g} fps" + (" con audio" if audio_src else ""))
+            continue
+        tmp_dir = None
+        try:
+            folder = seq
+            if seq.is_file():
+                tmp_dir = Path(tempfile.mkdtemp(prefix="vp-asm-"))
+                with zipfile.ZipFile(seq) as z:
+                    for name in z.namelist():
+                        if FRAME_RE.fullmatch(Path(name).name):  # solo frames, sin rutas raras
+                            (tmp_dir / Path(name).name).write_bytes(z.read(name))
+                folder = tmp_dir
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            count, size = assemble_sequence(folder, dst, args.format, fps, audio_src, args.crf, f"{label} {stem}")
+            done += 1
+            print(f"{label} {seq.name}: ✓ {count} frames a {fps:g} fps -> {dst.name} ({fmt_size(size)})"
+                  + (" con audio" if audio_src else ""))
+        except Exception as err:  # noqa: BLE001 - un fallo no debe parar el lote
+            failed += 1
+            print(f"{label} {seq.name}: ✗ {err}")
+        finally:
+            if tmp_dir:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+    print(f"\nListo en {time.time() - t0:.0f}s · armados {done} · ya al día {skipped} · con error {failed}")
     return 1 if failed else 0
 
 
@@ -826,6 +1100,10 @@ def delete_user_preset(name):
 
 def build_cli_args(body):
     """Del formulario de la web a los argumentos de `run`/`watch` (nada pasa por una shell)."""
+    if body.get("task") == "frames":
+        return build_frames_args(body)
+    if body.get("task") == "assemble":
+        return build_assemble_args(body)
     mode = {"run": "run", "dry": "run", "watch": "watch"}.get(body.get("mode"))
     inputs = [str(x) for x in body.get("inputs") or [] if str(x).strip()]
     output = str(body.get("output") or "").strip()
@@ -858,6 +1136,63 @@ def build_cli_args(body):
     if body.get("mode") == "dry":
         argv.append("--dry-run")
     return mode, argv, output
+
+
+def build_frames_args(body):
+    """Del formulario (pestaña «Frames») a los argumentos de `frames`."""
+    if body.get("mode") not in ("run", "dry"):
+        raise ValueError("modo desconocido")
+    inputs = [str(x) for x in body.get("inputs") or [] if str(x).strip()]
+    output = str(body.get("output") or "").strip()
+    if not inputs:
+        raise ValueError("elige al menos un archivo o carpeta de origen")
+    if not output:
+        raise ValueError("elige la carpeta de salida")
+    fmt = str(body.get("format") or "png")
+    if fmt not in FRAME_FORMATS:
+        raise ValueError("formato no válido")
+    argv = ["frames", *inputs, "-o", output, "--format", fmt]
+    for key, flag in (("fps", "--fps"), ("height", "--height"), ("settle", "--settle")):
+        v = body.get(key)
+        if v in (None, ""):
+            continue
+        float(v)  # valida que sea un número
+        argv += [flag, str(v)]
+    if body.get("zip"):
+        argv.append("--zip")
+    if body.get("force"):
+        argv.append("--force")
+    if body.get("mode") == "dry":
+        argv.append("--dry-run")
+    return "frames", argv, output
+
+
+def build_assemble_args(body):
+    """Del formulario (pestaña «Ensamblar») a los argumentos de `assemble`."""
+    if body.get("mode") not in ("run", "dry"):
+        raise ValueError("modo desconocido")
+    inputs = [str(x) for x in body.get("inputs") or [] if str(x).strip()]
+    output = str(body.get("output") or "").strip()
+    if not inputs:
+        raise ValueError("elige al menos una carpeta de frames o un .zip")
+    if not output:
+        raise ValueError("elige la carpeta de salida")
+    fmt = str(body.get("format") or "mp4")
+    if fmt not in ASSEMBLE_FORMATS:
+        raise ValueError("formato no válido")
+    argv = ["assemble", *inputs, "-o", output, "--format", fmt]
+    for key, flag in (("fps", "--fps"), ("crf", "--crf")):
+        v = body.get(key)
+        if v in (None, ""):
+            continue
+        float(v)  # valida que sea un número
+        argv += [flag, str(v)]
+    for key, flag in (("audio", "--audio"), ("force", "--force")):
+        if body.get(key):
+            argv.append(flag)
+    if body.get("mode") == "dry":
+        argv.append("--dry-run")
+    return "assemble", argv, output
 
 
 def open_in_file_manager(path):
@@ -1028,6 +1363,27 @@ def build_parser():
     watch = sub.add_parser("watch", help="vigila la carpeta y procesa lo nuevo cada cierto tiempo")
     add_common(watch)
     watch.add_argument("--interval", type=float, default=300, help="segundos entre pasadas (por defecto 300)")
+    fr = sub.add_parser("frames", help="saca frames sueltos (PNG/JPG) de cada vídeo, uno cada 1/fps segundos")
+    fr.add_argument("inputs", nargs="+", help="archivos y/o carpetas (se recorren con subcarpetas)")
+    fr.add_argument("-o", "--output", required=True, help="carpeta de salida (se crea si no existe)")
+    fr.add_argument("--fps", type=float, help="un frame cada 1/fps segundos (por defecto 24)")
+    fr.add_argument("--format", default="png", help="png (por defecto) o jpg")
+    fr.add_argument("--height", type=int, help="lado corto en px (por defecto: tamaño original)")
+    fr.add_argument("--zip", action="store_true", help="un .zip por vídeo en vez de una carpeta de frames")
+    fr.add_argument("--force", action="store_true", help="reprocesar aunque ya esté al día")
+    fr.add_argument("--dry-run", action="store_true", help="solo mostrar qué se haría")
+    fr.add_argument("--settle", type=float, default=0,
+                    help="saltar archivos modificados hace menos de N segundos")
+    asm = sub.add_parser("assemble", help="rearma un vídeo (mp4/webm/gif) desde carpetas o .zip de frames")
+    asm.add_argument("inputs", nargs="+", help="carpetas con frame_0001.png… o .zip (se recorren subcarpetas)")
+    asm.add_argument("-o", "--output", required=True, help="carpeta de salida (se crea si no existe)")
+    asm.add_argument("--fps", type=float, help="fotogramas por segundo (por defecto el de `frames`, o 24)")
+    asm.add_argument("--format", default="mp4", help="mp4 (por defecto), webm o gif")
+    asm.add_argument("--crf", type=int, default=18, help="calidad (mp4/webm), más alto = más pequeño; por defecto 18")
+    asm.add_argument("--audio", action="store_true",
+                     help="añadir el audio del vídeo original (lo busca en el manifest.json de los frames)")
+    asm.add_argument("--force", action="store_true", help="rehacer aunque la salida ya exista")
+    asm.add_argument("--dry-run", action="store_true", help="solo mostrar qué se haría")
     doc = sub.add_parser("doctor", help="comprueba ffmpeg, filtros y fuente")
     doc.add_argument("--font")
     doc.add_argument("--preset-file")
@@ -1048,12 +1404,16 @@ def main(argv=None):
             pass
     args = build_parser().parse_args(argv)
     presets = load_presets(getattr(args, "preset_file", None))
-    if args.cmd in ("run", "watch") and not (tool("ffmpeg") and tool("ffprobe")):
+    if args.cmd in ("run", "watch", "frames", "assemble") and not (tool("ffmpeg") and tool("ffprobe")):
         print("✗ No encuentro ffmpeg/ffprobe. Ejecuta `doctor` para más detalles.", file=sys.stderr)
         return 2
     try:
         if args.cmd == "run":
             return run_once(args, presets)
+        if args.cmd == "frames":
+            return run_frames(args)
+        if args.cmd == "assemble":
+            return run_assemble(args)
         if args.cmd == "watch":
             if args.settle == 0:
                 args.settle = 60

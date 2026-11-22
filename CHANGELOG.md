@@ -4,6 +4,16 @@
 
 All notable changes to this project are documented here.
 
+## v0.2.0 — Frames and assemble
+
+- New `assemble` command (and an **Assemble** switch in the web interface): rebuilds a video from frame folders or
+  `.zip` files as MP4, WebM or GIF. For frames extracted by this tool, the FPS and (with `--audio`) the original's
+  audio are taken from `manifest.json`, so a frames → video round trip needs no manual settings
+- New `frames` command (and a **Frames** switch in the web interface): extracts one frame every 1/fps seconds
+  (default 24) from each video as PNG or JPG, into a `name.frames/` folder or one `.zip` per video (`--zip`),
+  optionally downscaled (`--height`). Ported from Image Processor's "Video (frames)" tab, but on native ffmpeg
+  (fast, original resolution, no browser limits). It's idempotent and records each output in `manifest.json`
+
 ## v0.1.0 — First release
 
 - Local web interface (`serve`): folder browser, presets, live progress, results table, English/Spanish.

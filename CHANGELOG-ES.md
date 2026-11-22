@@ -4,6 +4,16 @@
 
 Todos los cambios importantes del proyecto quedan documentados acá.
 
+## v0.2.0 — Frames y ensamblar
+
+- Comando nuevo `assemble` (y un interruptor **Ensamblar** en la interfaz web): rearma un vídeo desde carpetas de frames
+  o `.zip` en MP4, WebM o GIF. Si los frames los sacó esta herramienta, el FPS y (con `--audio`) el audio del original
+  salen de `manifest.json`, así que ir de frames a vídeo no pide ningún ajuste a mano
+- Comando nuevo `frames` (y un interruptor **Frames** en la interfaz web): saca un frame cada 1/fps segundos
+  (24 por defecto) de cada vídeo en PNG o JPG, en una carpeta `nombre.frames/` o un `.zip` por vídeo (`--zip`),
+  con reducción opcional (`--height`). Viene de la pestaña «Video (frames)» de Image Processor, pero sobre ffmpeg
+  nativo (rápido, resolución original, sin límites del navegador). Es idempotente y anota cada salida en `manifest.json`
+
 ## v0.1.0 — Primera versión
 
 - Interfaz web local (`serve`): explorador de carpetas, presets, progreso en vivo, tabla de resultados, español/inglés.

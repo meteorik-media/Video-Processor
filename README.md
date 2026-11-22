@@ -1,4 +1,4 @@
-# Video Processor v0.1.0
+# Video Processor v0.2.0
 
 🌐 English | [Versión en español](README-ES.md) | 📝 [Changelog](CHANGELOG.md)
 
@@ -20,6 +20,8 @@ Compresses raw video into lightweight proxies so an AI (or a person) can watch i
 - **Idempotent**: anything already processed is skipped (same file, size, date and settings). Change the settings and it reprocesses by itself.
 - **Originals are never touched.** Each output is written to a temp file and renamed when done, so an interrupted run doesn't leave broken videos.
 - **Log template** (`log_raw.csv`, header only) and a **ready-made prompt** for the AI in `prompts/ai-log.en.md` (or `prompts/log-ia.es.md` in Spanish).
+- **Frame extraction** (`frames` command, or the **Frames** switch in the interface): one PNG/JPG every 1/fps seconds (default 24), into a `name.frames/` folder or a `.zip` per video, with optional downscaling. Meant for reassembling in an editor or running the frames through another tool such as Image Processor.
+- **Assemble** (`assemble` command, or the **Assemble** switch): rebuilds a video from frame folders or `.zip` files as MP4, WebM or GIF. For frames extracted by this tool it picks up the FPS and, with `--audio`, the original's audio on its own.
 - `watch` monitors a folder, and `doctor` checks that your ffmpeg has everything needed.
 
 ## 🚀 Usage
@@ -34,6 +36,8 @@ python video_processor.py doctor
 python video_processor.py run RAW/ -o PROXIES/ --preset ai-log --chunk 30m --scenes 0.3
 python video_processor.py run RAW/ -o PROXIES/ --dry-run
 python video_processor.py watch RAW/ -o PROXIES/ --interval 300
+python video_processor.py frames RAW/ -o FRAMES/ --fps 24 --format png --zip   # frames instead of proxies
+python video_processor.py assemble FRAMES/ -o VIDEOS/ --format mp4 --audio      # frames back into a video
 ```
 
 What ends up in `PROXIES/`:

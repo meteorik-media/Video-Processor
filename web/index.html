@@ -99,6 +99,7 @@ td.bad{color:var(--bad);} td.ok{color:var(--ok);}
 
 <div class="layout">
 <aside class="panel">
+  <div class="tri" id="task" style="margin-bottom:18px"></div>
   <div class="section" id="sec-src">
     <h2 data-i="src">Origen</h2>
     <div class="chips" id="srcChips"></div>
@@ -111,6 +112,33 @@ td.bad{color:var(--bad);} td.ok{color:var(--ok);}
     <h2 data-i="out">Salida</h2>
     <div class="add-row"><input type="text" id="outText" data-ph="outPh"><button class="btn" id="outBrowse" data-i="browseShort">Explorar…</button></div>
     <p class="hint" data-i="outHint">Se crea si no existe. Si ya hay un manifest.json, lo ya procesado se salta.</p>
+  </div>
+
+  <div class="section" id="sec-frames" style="display:none">
+    <h2 data-i="framesH">Frames</h2>
+    <div class="row2">
+      <div class="field"><label data-i="framesFps">Un frame cada 1/fps s</label><input type="number" id="fFps" min="0.1" step="0.5" placeholder="24"></div>
+      <div class="field"><label data-i="framesFmt">Formato</label><select id="fFormat"><option value="png">PNG</option><option value="jpg">JPG</option></select></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label data-i="height">Lado corto (px)</label><input type="number" id="fHeight" min="64" step="2" data-ph="origPh"></div>
+      <div class="field"><label data-i="settle">Esperar (s)</label><input type="number" id="fSettle" min="0" placeholder="0"></div>
+    </div>
+    <label class="toggle-row"><input type="checkbox" id="fZip"> <span data-i="framesZip">Un .zip por vídeo (en vez de carpeta)</span></label>
+    <label class="toggle-row"><input type="checkbox" id="fForce"> <span data-i="force">Reprocesar aunque ya esté al día</span></label>
+    <p class="hint" data-i="framesHint">Saca un frame cada 1/fps segundos de cada vídeo (nombres frame_0001…), sin audio. Úsalo para reensamblar en tu editor o pasar los frames por otra herramienta (p. ej. Image Processor). Con 24 fps y sin lado corto salen a tamaño original.</p>
+  </div>
+
+  <div class="section" id="sec-asm" style="display:none">
+    <h2 data-i="asmH">Ensamblar video</h2>
+    <div class="row2">
+      <div class="field"><label>FPS</label><input type="number" id="aFps" min="0.1" step="0.5" data-ph="autoPh"></div>
+      <div class="field"><label data-i="framesFmt">Formato</label><select id="aFormat"><option value="mp4">MP4</option><option value="webm">WebM</option><option value="gif">GIF</option></select></div>
+    </div>
+    <div class="field"><label data-i="asmCrf">Calidad (CRF, menor = mejor)</label><input type="number" id="aCrf" min="0" max="51" placeholder="18"></div>
+    <label class="toggle-row"><input type="checkbox" id="aAudio"> <span data-i="asmAudio">Añadir el audio del original (MP4/WebM)</span></label>
+    <label class="toggle-row"><input type="checkbox" id="aForce"> <span data-i="asmForce">Rehacer aunque ya exista</span></label>
+    <p class="hint" data-i="asmHint">Elige en «Origen» las carpetas de frames (frame_0001.png…) o .zip, por ejemplo la salida del modo Frames. Si los sacó este programa, el FPS y el audio se toman solos del original; si no, pon el FPS (24 por defecto).</p>
   </div>
 
   <div class="section" id="sec-preset">
@@ -226,7 +254,13 @@ const T = {
     needSrcOut:"Falta el origen o la salida",missing:"No se encontró",
     saveAs:"Guardar como preset propio",pNamePh:"nombre (ej. gameplay-rapido)",pDescPh:"descripción (opcional)",save:"Guardar",del:"Borrar este preset",
     presetHint:"Guarda el preset elegido con los ajustes de abajo aplicados. Se escribe en presets.user.json y también sirve por línea de comandos.",
-    withAudio:"con audio",noAudio:"sin audio",withClock:"reloj",saved:"Preset guardado",deleted:"Preset borrado",confirmDel:"¿Borrar el preset",mine:"(propio)"},
+    withAudio:"con audio",noAudio:"sin audio",withClock:"reloj",saved:"Preset guardado",deleted:"Preset borrado",confirmDel:"¿Borrar el preset",mine:"(propio)",
+    taskProxy:"Proxy",taskFrames:"Frames",framesH:"Frames",framesFps:"Un frame cada 1/fps s",framesFmt:"Formato",origPh:"original",
+    framesZip:"Un .zip por vídeo (en vez de carpeta)",
+    framesHint:"Saca un frame cada 1/fps segundos de cada vídeo (nombres frame_0001…), sin audio. Úsalo para reensamblar en tu editor o pasar los frames por otra herramienta (p. ej. Image Processor). Sin lado corto salen a tamaño original.",
+    framesN:"frames",taskAsm:"Ensamblar",asmH:"Ensamblar video",autoPh:"auto",asmCrf:"Calidad (CRF, menor = mejor)",
+    asmAudio:"Añadir el audio del original (MP4/WebM)",asmForce:"Rehacer aunque ya exista",
+    asmHint:"Elige en «Origen» las carpetas de frames (frame_0001.png…) o .zip, por ejemplo la salida del modo Frames. Si los sacó este programa, el FPS y el audio se toman solos del original; si no, pon el FPS (24 por defecto)."},
   en:{src:"Source",add:"Add",browse:"Browse files and folders…",browseShort:"Browse…",pathPh:"Paste a file or folder path",
     srcHint:"Single files or folders (subfolders included). Originals are never touched.",
     out:"Output",outPh:"Output folder",outHint:"Created if missing. If a manifest.json is already there, what's processed gets skipped.",
@@ -246,13 +280,20 @@ const T = {
     needSrcOut:"Source or output is missing",missing:"Not found",
     saveAs:"Save as your own preset",pNamePh:"name (e.g. fast-gameplay)",pDescPh:"description (optional)",save:"Save",del:"Delete this preset",
     presetHint:"Saves the chosen preset with the settings below applied. It is written to presets.user.json and also works from the command line.",
-    withAudio:"with audio",noAudio:"no audio",withClock:"clock",saved:"Preset saved",deleted:"Preset deleted",confirmDel:"Delete preset",mine:"(yours)"}
+    withAudio:"with audio",noAudio:"no audio",withClock:"clock",saved:"Preset saved",deleted:"Preset deleted",confirmDel:"Delete preset",mine:"(yours)",
+    taskProxy:"Proxy",taskFrames:"Frames",framesH:"Frames",framesFps:"One frame every 1/fps s",framesFmt:"Format",origPh:"original",
+    framesZip:"One .zip per video (instead of a folder)",
+    framesHint:"Extracts one frame every 1/fps seconds from each video (named frame_0001…), no audio. Use it to reassemble in your editor or to run the frames through another tool (e.g. Image Processor). Without a short side they come out at original size.",
+    framesN:"frames",taskAsm:"Assemble",asmH:"Assemble video",autoPh:"auto",asmCrf:"Quality (CRF, lower = better)",
+    asmAudio:"Add the original's audio (MP4/WebM)",asmForce:"Redo even if it already exists",
+    asmHint:"Pick frame folders (frame_0001.png…) or .zip files in “Source”, e.g. the output of Frames mode. If this program extracted them, FPS and audio come from the original automatically; otherwise set the FPS (24 by default)."}
 };
 const $ = id => document.getElementById(id);
 const store = { get(k){ try{return localStorage.getItem(k);}catch(e){return null;} }, set(k,v){ try{localStorage.setItem(k,v);}catch(e){} } };
 let lang = store.get("vp.lang") || ((navigator.language||"es").slice(0,2) === "en" ? "en" : "es");
 const t = k => (T[lang][k] ?? k);
 let S = { presets:{}, doctor:null, roots:[], user_presets:[] };
+let task = "proxy";
 let sources = [], tri = { audio:null, timecode:null }, since = 0, lastState = "idle", pollTimer = null;
 
 async function api(path, body){
@@ -272,8 +313,19 @@ function applyLang(){
   document.querySelectorAll("[data-i]").forEach(el => { el.textContent = t(el.dataset.i); });
   document.querySelectorAll("[data-ph]").forEach(el => { el.placeholder = t(el.dataset.ph); });
   $("langBtn").textContent = lang === "es" ? "EN" : "ES";
-  buildTri("audio"); buildTri("timecode"); fillPresets(); renderPresetDesc(); renderDoctor(); renderState(lastState); updateRunBtn();
+  buildTri("audio"); buildTri("timecode"); buildTask(); fillPresets(); renderPresetDesc(); renderDoctor(); renderState(lastState); updateRunBtn();
   if ($("tab-res").style.display !== "none") loadResults();
+}
+function buildTask(){
+  const box = $("task"); box.innerHTML = "";
+  [["proxy",t("taskProxy")],["frames",t("taskFrames")],["assemble",t("taskAsm")]].forEach(([val,label]) => {
+    const b = document.createElement("button"); b.textContent = label; b.className = task===val ? "on" : "";
+    b.onclick = () => { task = val; persist(); buildTask(); }; box.appendChild(b);
+  });
+  const fr = task === "frames", as = task === "assemble";
+  ["sec-preset","sec-over","sec-split","sec-watch"].forEach(id => $(id).style.display = (fr||as) ? "none" : "");
+  $("sec-frames").style.display = fr ? "" : "none"; $("sec-asm").style.display = as ? "" : "none";
+  $("watchBtn").style.display = (fr||as) ? "none" : "";
 }
 function buildTri(key){
   const box = $(key); box.innerHTML = "";
@@ -324,7 +376,8 @@ function updateRunBtn(){
 }
 function persist(){
   store.set("vp.form", JSON.stringify({ sources, out:$("outText").value, preset:$("preset").value,
-    f:["height","fps","crf","settle","font","chunk","scenes","interval"].reduce((a,k)=>(a[k]=$(k).value,a),{}), tri }));
+    f:["height","fps","crf","settle","font","chunk","scenes","interval","fFps","fFormat","fHeight","fSettle","aFps","aFormat","aCrf"].reduce((a,k)=>(a[k]=$(k).value,a),{}),
+    fZip:$("fZip").checked, aAudio:$("aAudio").checked, tri, task }));
 }
 function restore(){
   try{
@@ -333,6 +386,8 @@ function restore(){
     if (f.preset && S.presets[f.preset]) $("preset").value = f.preset;
     Object.entries(f.f||{}).forEach(([k,v])=>{ if ($(k)) $(k).value = v; });
     tri = Object.assign(tri, f.tri||{});
+    $("fZip").checked = !!f.fZip; $("aAudio").checked = !!f.aAudio;
+    if (f.task === "frames" || f.task === "assemble") task = f.task;
   }catch(e){}
 }
 
@@ -384,6 +439,10 @@ $("mOk").onclick = () => {
 /* ── ejecución y sondeo ── */
 function payload(mode){
   const num = id => $(id).value.trim()==="" ? null : $(id).value.trim();
+  if (task === "assemble") return { task, mode, inputs:sources, output:$("outText").value.trim(), fps:num("aFps"), format:$("aFormat").value,
+    crf:num("aCrf"), audio:$("aAudio").checked, force:$("aForce").checked };
+  if (task === "frames") return { task, mode, inputs:sources, output:$("outText").value.trim(), fps:num("fFps"), format:$("fFormat").value,
+    height:num("fHeight"), settle:num("fSettle"), zip:$("fZip").checked, force:$("fForce").checked };
   return { mode, inputs:sources, output:$("outText").value.trim(), preset:$("preset").value,
     height:num("height"), fps:num("fps"), crf:num("crf"), settle:num("settle"), scenes:num("scenes"), interval:num("interval"),
     chunk:$("chunk").value.trim(), audio:tri.audio, timecode:tri.timecode, font:$("font").value.trim(), force:$("force").checked };
@@ -439,7 +498,7 @@ async function loadResults(){
       const cell = (txt, cls) => { const td=document.createElement("td"); td.textContent=txt; if(cls) td.className=cls; tr.appendChild(td); return td; };
       cell(i.id); cell(i.status==="ok"?"✓":"✗ "+(i.error||""), i.status==="ok"?"ok":"bad");
       cell(i.duration?fmtHms(i.duration):"—"); cell(i.status==="ok" ? `${fmtSize(i.src_size)} → ${fmtSize(sz)}` : "—");
-      const td = cell(""); i.outputs.forEach(o => { const d=document.createElement("div"); d.className="parts"; d.textContent=`${o.file}  ${fmtHms(o.start)}–${fmtHms(o.end)}`; td.appendChild(d); });
+      const td = cell(""); i.outputs.forEach(o => { const d=document.createElement("div"); d.className="parts"; d.textContent = o.frames ? `${o.file}  ${o.frames} ${t("framesN")}` : `${o.file}  ${fmtHms(o.start)}–${fmtHms(o.end)}`; td.appendChild(d); });
       cell(i.markers||"—"); tb.appendChild(tr);
     });
     body.innerHTML = ""; body.appendChild(tb);
@@ -460,7 +519,7 @@ $("srcBrowse").onclick = () => openBrowser("src", "");
 $("outBrowse").onclick = () => openBrowser("out", "");
 $("outText").oninput = () => { updateRunBtn(); persist(); };
 $("preset").onchange = () => { renderPresetDesc(); persist(); };
-["height","fps","crf","settle","font","chunk","scenes","interval"].forEach(k => $(k).onchange = persist);
+["height","fps","crf","settle","font","chunk","scenes","interval","fFps","fFormat","fHeight","fSettle","fZip","aFps","aFormat","aCrf","aAudio"].forEach(k => $(k).onchange = persist);
 $("runBtn").onclick = () => lastState==="running" ? api("/api/cancel", {}).then(poll).catch(e=>toast(e.message)) : start("run");
 async function refreshPresets(selected){ S = await api("/api/state"); S.user_presets = S.user_presets || []; fillPresets(selected); renderPresetDesc(); persist(); }
 $("pSave").onclick = async () => {

@@ -71,6 +71,27 @@ class UnitTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             vp.build_cli_args({"mode": "run", "inputs": ["x"], "output": "/o", "fps": "--evil"})
 
+    def test_build_cli_args_frames_task(self):
+        mode, argv, out = vp.build_cli_args({
+            "task": "frames", "mode": "dry", "inputs": ["/raw"], "output": "/out", "fps": "12",
+            "format": "jpg", "height": "", "zip": True, "force": False})
+        self.assertEqual((mode, out), ("frames", "/out"))
+        self.assertEqual(argv, ["frames", "/raw", "-o", "/out", "--format", "jpg", "--fps", "12", "--zip",
+                                "--dry-run"])
+        with self.assertRaises(ValueError):
+            vp.build_cli_args({"task": "frames", "mode": "run", "inputs": ["x"], "output": "/o", "format": "bmp"})
+        with self.assertRaises(ValueError):
+            vp.build_cli_args({"task": "frames", "mode": "run", "inputs": ["x"], "output": "/o", "fps": "--evil"})
+
+    def test_build_cli_args_assemble_task(self):
+        mode, argv, out = vp.build_cli_args({
+            "task": "assemble", "mode": "run", "inputs": ["/fr"], "output": "/out", "format": "gif",
+            "fps": "", "crf": "20", "audio": True})
+        self.assertEqual((mode, out), ("assemble", "/out"))
+        self.assertEqual(argv, ["assemble", "/fr", "-o", "/out", "--format", "gif", "--crf", "20", "--audio"])
+        with self.assertRaises(ValueError):
+            vp.build_cli_args({"task": "assemble", "mode": "run", "inputs": ["x"], "output": "/o", "format": "avi"})
+
     def test_presets_have_ai_log_recipe(self):
         p = vp.BUILTIN_PRESETS["ai-log"]
         self.assertEqual((p["height"], p["fps"], p["crf"], p["audio"]), (360, 2, 34, False))
@@ -127,6 +148,45 @@ class IntegrationTests(unittest.TestCase):
         before = (out / "cards_0001.ai-log.part01.mp4").stat().st_mtime_ns
         self.run_tool(out, "--chunk", "4s", "--scenes", "0.3")
         self.assertEqual((out / "cards_0001.ai-log.part01.mp4").stat().st_mtime_ns, before)
+
+    def test_frames_folder_zip_and_idempotence(self):
+        out = self.tmp / "out-frames"
+        src = self.inp / "sub" / "cards_0002.mp4"  # 8 s, 640x360
+        self.assertEqual(vp.main(["frames", str(src), "-o", str(out), "--fps", "2", "--height", "180"]), 0)
+        frames = sorted((out / "cards_0002.frames").glob("frame_*.png"))
+        self.assertEqual(len(frames), 16)
+        self.assertEqual(frames[0].name, "frame_01.png")
+        self.assertEqual(self.probe_out(frames[0])[0]["height"], 180)
+        entry = json.loads((out / "manifest.json").read_text(encoding="utf-8"))["entries"]["cards_0002.mp4|frames"]
+        self.assertEqual(entry["outputs"][0]["frames"], 16)
+        before = frames[0].stat().st_mtime_ns
+        vp.main(["frames", str(src), "-o", str(out), "--fps", "2", "--height", "180"])
+        self.assertEqual(frames[0].stat().st_mtime_ns, before)  # al día: no se rehace
+        self.assertEqual(vp.main(["frames", str(src), "-o", str(out), "--fps", "2", "--zip", "--format", "jpg"]), 0)
+        import zipfile
+        names = zipfile.ZipFile(out / "cards_0002.frames.zip").namelist()
+        self.assertEqual((len(names), names[0]), (16, "frame_01.jpg"))
+        self.assertFalse(list(out.glob("*.part")) + list(out.glob("*.tmp")))
+
+    def test_assemble_round_trip_with_audio_from_manifest_and_zip(self):
+        out = self.tmp / "out-asm"
+        src = self.inp / "cards_0001.mp4"  # 10 s con audio
+        self.assertEqual(vp.main(["frames", str(src), "-o", str(out / "fr"), "--fps", "4", "--height", "180"]), 0)
+        self.assertEqual(vp.main(["assemble", str(out / "fr"), "-o", str(out / "v"), "--audio"]), 0)
+        streams = self.probe_out(out / "v" / "cards_0001.assembled.mp4")
+        self.assertEqual(sorted(s["codec_type"] for s in streams), ["audio", "video"])
+        video = [s for s in streams if s["codec_type"] == "video"][0]
+        self.assertEqual((video["avg_frame_rate"], video["height"]), ("4/1", 180))  # fps salió del manifest
+        # desde un .zip y en GIF
+        self.assertEqual(vp.main(["frames", str(src), "-o", str(out / "z"), "--fps", "2", "--height", "90",
+                                  "--zip"]), 0)
+        self.assertEqual(vp.main(["assemble", str(out / "z"), "-o", str(out / "g"), "--format", "gif"]), 0)
+        self.assertTrue((out / "g" / "cards_0001.assembled.gif").is_file())
+        # segunda pasada: ya al día
+        before = (out / "g" / "cards_0001.assembled.gif").stat().st_mtime_ns
+        vp.main(["assemble", str(out / "z"), "-o", str(out / "g"), "--format", "gif"])
+        self.assertEqual((out / "g" / "cards_0001.assembled.gif").stat().st_mtime_ns, before)
+        self.assertFalse(list(out.rglob("*.part")))
 
     def test_phone_video_with_rotation_metadata_is_not_distorted(self):
         phone = self.tmp / "phone"
